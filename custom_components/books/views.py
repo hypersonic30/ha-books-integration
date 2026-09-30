@@ -386,7 +386,17 @@ class TolinoView(HomeAssistantView):
         return web.json_response({
             "enabled": True, "reachable": True, "logged_in": bool(status.get("logged_in")),
             "error": status.get("last_error"), "login_backoff_s": status.get("login_backoff_s", 0),
+            "sent": self._hass.data[DOMAIN]["tolino_sent"].public(),
         })
+
+    @staticmethod
+    async def _still_in_cloud(bridge: TolinoBridgeClient, deliverable_id: str) -> bool:
+        """Was the earlier upload deleted in the cloud meanwhile? If we can't tell, assume it is still there."""
+        try:
+            library = await bridge.get("/library", timeout=TOLINO_UPLOAD_TIMEOUT)
+        except (UpstreamError, aiohttp.ClientError, TimeoutError):
+            return True
+        return any(b.get("deliverableId") == deliverable_id for b in (library or {}).get("books", []))
 
     async def post(self, request: web.Request) -> web.Response:
         cfg = get_config(self._hass)
@@ -401,6 +411,17 @@ class TolinoView(HomeAssistantView):
         if not bridge.configured:
             return web.json_response({"error": "The Tolino bridge is not configured", "code": "not_configured"},
                                      status=503)
+
+        registry = self._hass.data[DOMAIN]["tolino_sent"]
+        force = data.get("force") is True
+        prior = registry.get(item_id)
+        if prior and not force:
+            if await self._still_in_cloud(bridge, prior["deliverableId"]):
+                return web.json_response(
+                    {"error": "This book is already in your Tolino Cloud", "code": "already_sent", "sent_at": prior["at"]},
+                    status=409)
+            await registry.async_remove(item_id)  # deleted in the cloud since -> a fresh send is fine
+            prior = None
 
         abs_client = AbsClient(self._hass, cfg)
         try:
@@ -449,9 +470,24 @@ class TolinoView(HomeAssistantView):
             return web.json_response({"error": f"Cannot reach the Tolino bridge: {exc}", "code": "unreachable"},
                                      status=503)
         _LOGGER.info("books: sent '%s' to the Tolino Cloud", filename)
-        return web.json_response({"ok": True, "filename": filename,
-                                  "deliverableId": (result or {}).get("deliverableId"),
-                                  "cover": (result or {}).get("cover")})
+        new_id = (result or {}).get("deliverableId")
+        if new_id:
+            await registry.async_set(item_id, new_id, filename)
+        replaced = None
+        if prior and new_id and prior["deliverableId"] != new_id:
+            # Replace, don't duplicate: the new copy is safely up, now drop the old one.
+            try:
+                await bridge.request("DELETE", f"/book/{prior['deliverableId']}", timeout=60)
+                replaced = True
+            except UpstreamError as exc:
+                replaced = exc.status == 404  # already gone counts as replaced
+                if not replaced:
+                    _LOGGER.warning("books: could not remove the old Tolino copy of '%s': %s", filename, exc)
+            except (aiohttp.ClientError, TimeoutError) as exc:
+                replaced = False
+                _LOGGER.warning("books: could not remove the old Tolino copy of '%s': %s", filename, exc)
+        return web.json_response({"ok": True, "filename": filename, "deliverableId": new_id,
+                                  "cover": (result or {}).get("cover"), "replaced": replaced})
 
 
 class RescueStatusView(HomeAssistantView):

@@ -58,7 +58,7 @@ async def test_send_ok(hass, tolino_entry, hass_client, aioclient_mock):
     aioclient_mock.post(f"{BRIDGE}/upload", json={"deliverableId": "bosh_1", "title": "T"}, headers=JSON)
     resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
     assert resp.status == 200
-    assert await resp.json() == {"ok": True, "filename": "Dämmerung.epub", "deliverableId": "bosh_1", "cover": None}
+    assert await resp.json() == {"ok": True, "filename": "Dämmerung.epub", "deliverableId": "bosh_1", "cover": None, "replaced": None}
     calls = {str(c[1]): c for c in aioclient_mock.mock_calls}
     assert calls[f"{ABS}/api/items/abc123/ebook"][3]["Authorization"] == "Bearer abs-token"
     upload = calls[f"{BRIDGE}/upload"]
@@ -255,3 +255,102 @@ async def test_send_without_cover_still_uploads(hass, tolino_entry, hass_client,
     aioclient_mock.post(f"{BRIDGE}/upload", json={"deliverableId": "d1", "cover": None}, headers=JSON)
     resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
     assert resp.status == 200 and (await resp.json())["cover"] is None
+
+
+# --- duplicate protection / replace ------------------------------------------------
+
+def _bridge_upload(aioclient_mock, did):
+    aioclient_mock.post(f"{BRIDGE}/upload", json={"deliverableId": did, "cover": True}, headers=JSON)
+
+
+def _bridge_library(aioclient_mock, *ids):
+    aioclient_mock.get(f"{BRIDGE}/library", json={"count": len(ids), "books": [
+        {"title": "T", "kind": "upload", "deliverableId": i} for i in ids]}, headers=JSON)
+
+
+def _uploads(aioclient_mock):
+    return [c for c in aioclient_mock.mock_calls if str(c[1]).endswith("/upload")]
+
+
+def _deletes(aioclient_mock):
+    return [str(c[1]) for c in aioclient_mock.mock_calls if c[0] == "DELETE"]
+
+
+async def _send(client, **extra):
+    return await client.post("/api/books/tolino", json={"abs_item_id": "abc123", **extra})
+
+
+async def test_first_send_is_remembered_and_shown_in_status(hass, tolino_entry, hass_client, aioclient_mock):
+    _mock_abs(aioclient_mock); _bridge_upload(aioclient_mock, "d1")
+    aioclient_mock.get(f"{BRIDGE}/status", json={"logged_in": True}, headers=JSON)
+    c = await hass_client()
+    assert (await _send(c)).status == 200
+    body = await (await c.get("/api/books/tolino")).json()
+    assert list(body["sent"]) == ["abc123"] and "at" in body["sent"]["abc123"]
+    assert "d1" not in str(body["sent"])                      # cloud ids stay server-side
+
+
+async def test_second_send_asks_instead_of_duplicating(hass, tolino_entry, hass_client, aioclient_mock):
+    _mock_abs(aioclient_mock); _bridge_upload(aioclient_mock, "d1"); _bridge_library(aioclient_mock, "d1")
+    c = await hass_client()
+    await _send(c)
+    resp = await _send(c)
+    assert resp.status == 409
+    body = await resp.json()
+    assert body["code"] == "already_sent" and body["sent_at"]
+    assert len(_uploads(aioclient_mock)) == 1                 # nothing uploaded the second time
+
+
+async def test_deleted_in_cloud_means_send_again(hass, tolino_entry, hass_client, aioclient_mock):
+    _mock_abs(aioclient_mock); _bridge_upload(aioclient_mock, "d1"); _bridge_library(aioclient_mock, "other")
+    c = await hass_client()
+    await _send(c)
+    resp = await _send(c)                                     # d1 is gone from the cloud library
+    assert resp.status == 200 and len(_uploads(aioclient_mock)) == 2
+    assert _deletes(aioclient_mock) == []                     # nothing left to replace
+
+
+async def test_bridge_down_during_check_still_protects(hass, tolino_entry, hass_client, aioclient_mock):
+    import aiohttp
+    _mock_abs(aioclient_mock); _bridge_upload(aioclient_mock, "d1")
+    aioclient_mock.get(f"{BRIDGE}/library", exc=aiohttp.ClientConnectionError("down"))
+    c = await hass_client()
+    await _send(c)
+    assert (await _send(c)).status == 409
+
+
+async def test_force_replaces_the_old_copy(hass, tolino_entry, hass_client, aioclient_mock):
+    _mock_abs(aioclient_mock); _bridge_upload(aioclient_mock, "d1")
+    c = await hass_client()
+    await _send(c)
+    aioclient_mock.clear_requests()
+    _mock_abs(aioclient_mock); _bridge_upload(aioclient_mock, "d2")
+    aioclient_mock.delete(f"{BRIDGE}/book/d1", json={"deleted": "d1"}, headers=JSON)
+    resp = await _send(c, force=True)
+    body = await resp.json()
+    assert resp.status == 200 and body["deliverableId"] == "d2" and body["replaced"] is True
+    assert _deletes(aioclient_mock) == [f"{BRIDGE}/book/d1"]
+    hass_reg = hass.data[DOMAIN]["tolino_sent"]
+    assert hass_reg.get("abc123")["deliverableId"] == "d2"    # now points at the new copy
+
+
+async def test_force_survives_failed_delete_of_old_copy(hass, tolino_entry, hass_client, aioclient_mock):
+    _mock_abs(aioclient_mock); _bridge_upload(aioclient_mock, "d1")
+    c = await hass_client()
+    await _send(c)
+    aioclient_mock.clear_requests()
+    _mock_abs(aioclient_mock); _bridge_upload(aioclient_mock, "d2")
+    aioclient_mock.delete(f"{BRIDGE}/book/d1", status=502, json={"error": "bosh"}, headers=JSON)
+    body = await (await _send(c, force=True)).json()
+    assert body["ok"] and body["replaced"] is False           # new copy is up; old one couldn't be removed
+
+
+async def test_sent_registry_survives_reload(hass, tolino_entry, hass_client, aioclient_mock):
+    _mock_abs(aioclient_mock); _bridge_upload(aioclient_mock, "d1")
+    aioclient_mock.get(f"{BRIDGE}/status", json={"logged_in": True}, headers=JSON)
+    c = await hass_client()
+    await _send(c)
+    hass.data[DOMAIN].pop("tolino_sent")                      # what a HA restart does to the in-memory copy
+    assert await hass.config_entries.async_reload(tolino_entry.entry_id)
+    await hass.async_block_till_done()
+    assert "abc123" in (await (await c.get("/api/books/tolino")).json())["sent"]

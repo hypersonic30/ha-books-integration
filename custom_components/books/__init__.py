@@ -10,6 +10,7 @@ from homeassistant.helpers.event import async_track_time_interval
 
 from .const import CONF_DEBUG_LOGGING, DOMAIN, RESCUE_INTERVAL_SECONDS
 from .rescue import ImportRescue
+from .tolino_registry import SentRegistry
 from .views import (
     AbsProxyView,
     AddBookView,
@@ -37,6 +38,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for view in (ChaptarrProxyView, ChaptarrMediaView, AbsProxyView, AddBookView, RescueStatusView, TolinoView):
             hass.http.register_view(view(hass))
         data["views_registered"] = True
+
+    if "tolino_sent" not in data:
+        data["tolino_sent"] = SentRegistry(hass)
+        await data["tolino_sent"].async_load()
 
     rescue = data.get("rescue") or ImportRescue(hass)
     data["rescue"] = rescue
