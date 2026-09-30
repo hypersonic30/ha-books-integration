@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
+.pytest_cache/
+
+# Never commit credentials or local dev data
+.git-token-*
+.dev-secrets.env
+.chaptarr-backup-*.json
+*.swp

@@ -1,0 +1,22 @@
+{
+  "domain": "books",
+  "name": "Books (Chaptarr + Audiobookshelf)",
+  "after_dependencies": [
+    "notify",
+    "persistent_notification"
+  ],
+  "codeowners": [
+    "@hypersonic30"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "http"
+  ],
+  "documentation": "https://github.com/hypersonic30/ha-books-integration",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/hypersonic30/ha-books-integration/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
+}

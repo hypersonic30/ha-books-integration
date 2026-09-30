@@ -1,0 +1,67 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Chaptarr + Audiobookshelf",
+        "description": "Credentials stay in Home Assistant; the books card never sees them.",
+        "data": {
+          "chaptarr_url": "Chaptarr URL",
+          "chaptarr_api_key": "Chaptarr API key",
+          "abs_url": "Audiobookshelf URL",
+          "abs_token": "Audiobookshelf API token",
+          "verify_ssl": "Verify SSL certificate",
+          "rescue_imports": "Automatically repair blocked imports",
+          "notify_service": "Notify service (optional)",
+          "debug_logging": "Enable debug logging"
+        },
+        "data_description": {
+          "chaptarr_url": "e.g. http://192.168.1.10:8789",
+          "chaptarr_api_key": "Chaptarr → Settings → General → API Key",
+          "abs_url": "e.g. http://192.168.1.10:13378",
+          "abs_token": "Token of a dedicated, restricted Audiobookshelf user (Settings → Users), not the admin",
+          "verify_ssl": "Disable only for self-signed certificates",
+          "rescue_imports": "Assigns downloads that Chaptarr blocks because of a same-series title mix-up to the book they were grabbed for",
+          "notify_service": "Notified when an automatic repair fails, e.g. notify.mobile_app_iphone",
+          "debug_logging": "Logs every proxied request at debug level"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure",
+        "data": {
+          "chaptarr_url": "Chaptarr URL",
+          "chaptarr_api_key": "Chaptarr API key",
+          "abs_url": "Audiobookshelf URL",
+          "abs_token": "Audiobookshelf API token",
+          "verify_ssl": "Verify SSL certificate",
+          "rescue_imports": "Automatically repair blocked imports",
+          "notify_service": "Notify service (optional)",
+          "debug_logging": "Enable debug logging"
+        },
+        "data_description": {
+          "chaptarr_url": "e.g. http://192.168.1.10:8789",
+          "chaptarr_api_key": "Chaptarr → Settings → General → API Key",
+          "abs_url": "e.g. http://192.168.1.10:13378",
+          "abs_token": "Token of a dedicated, restricted Audiobookshelf user (Settings → Users), not the admin",
+          "verify_ssl": "Disable only for self-signed certificates",
+          "rescue_imports": "Assigns downloads that Chaptarr blocks because of a same-series title mix-up to the book they were grabbed for",
+          "notify_service": "Notified when an automatic repair fails, e.g. notify.mobile_app_iphone",
+          "debug_logging": "Logs every proxied request at debug level"
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "The URL must start with http:// or https://",
+      "chaptarr_cannot_connect": "Could not connect to Chaptarr at that URL",
+      "chaptarr_invalid_auth": "Chaptarr rejected the API key",
+      "not_chaptarr": "That URL is not a Chaptarr instance",
+      "abs_cannot_connect": "Could not connect to Audiobookshelf at that URL",
+      "abs_invalid_auth": "Audiobookshelf rejected the token",
+      "ssl_error": "SSL validation failed — disable 'Verify SSL certificate' for self-signed certificates",
+      "unknown": "Unexpected error — check the Home Assistant log"
+    },
+    "abort": {
+      "reconfigure_successful": "Connection updated",
+      "single_instance_allowed": "Only one Books integration is supported"
+    }
+  }
+}

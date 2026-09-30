@@ -1,0 +1,67 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Chaptarr + Audiobookshelf verbinden",
+        "description": "Die Zugangsdaten bleiben in Home Assistant; die Books-Card sieht sie nie.",
+        "data": {
+          "chaptarr_url": "Chaptarr-URL",
+          "chaptarr_api_key": "Chaptarr-API-Key",
+          "abs_url": "Audiobookshelf-URL",
+          "abs_token": "Audiobookshelf-API-Token",
+          "verify_ssl": "SSL-Zertifikat prüfen",
+          "rescue_imports": "Blockierte Importe automatisch reparieren",
+          "notify_service": "Benachrichtigungsdienst (optional)",
+          "debug_logging": "Debug-Logging aktivieren"
+        },
+        "data_description": {
+          "chaptarr_url": "z. B. http://192.168.1.10:8789",
+          "chaptarr_api_key": "Chaptarr → Settings → General → API Key",
+          "abs_url": "z. B. http://192.168.1.10:13378",
+          "abs_token": "Token eines eigenen, eingeschränkten Audiobookshelf-Benutzers (Settings → Users), nicht des Admins",
+          "verify_ssl": "Nur deaktivieren, wenn ein selbstsigniertes Zertifikat verwendet wird",
+          "rescue_imports": "Ordnet Downloads, die Chaptarr wegen einer Titelverwechslung innerhalb derselben Serie blockiert, dem Buch zu, für das sie geholt wurden",
+          "notify_service": "Wird benachrichtigt, wenn eine automatische Reparatur scheitert, z. B. notify.mobile_app_iphone",
+          "debug_logging": "Protokolliert jede weitergeleitete Anfrage auf Debug-Ebene"
+        }
+      },
+      "reconfigure": {
+        "title": "Verbindung ändern",
+        "data": {
+          "chaptarr_url": "Chaptarr-URL",
+          "chaptarr_api_key": "Chaptarr-API-Key",
+          "abs_url": "Audiobookshelf-URL",
+          "abs_token": "Audiobookshelf-API-Token",
+          "verify_ssl": "SSL-Zertifikat prüfen",
+          "rescue_imports": "Blockierte Importe automatisch reparieren",
+          "notify_service": "Benachrichtigungsdienst (optional)",
+          "debug_logging": "Debug-Logging aktivieren"
+        },
+        "data_description": {
+          "chaptarr_url": "z. B. http://192.168.1.10:8789",
+          "chaptarr_api_key": "Chaptarr → Settings → General → API Key",
+          "abs_url": "z. B. http://192.168.1.10:13378",
+          "abs_token": "Token eines eigenen, eingeschränkten Audiobookshelf-Benutzers (Settings → Users), nicht des Admins",
+          "verify_ssl": "Nur deaktivieren, wenn ein selbstsigniertes Zertifikat verwendet wird",
+          "rescue_imports": "Ordnet Downloads, die Chaptarr wegen einer Titelverwechslung innerhalb derselben Serie blockiert, dem Buch zu, für das sie geholt wurden",
+          "notify_service": "Wird benachrichtigt, wenn eine automatische Reparatur scheitert, z. B. notify.mobile_app_iphone",
+          "debug_logging": "Protokolliert jede weitergeleitete Anfrage auf Debug-Ebene"
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "Die URL muss mit http:// oder https:// beginnen",
+      "chaptarr_cannot_connect": "Chaptarr ist unter dieser URL nicht erreichbar",
+      "chaptarr_invalid_auth": "Chaptarr hat den API-Key abgelehnt",
+      "not_chaptarr": "Unter dieser URL läuft kein Chaptarr",
+      "abs_cannot_connect": "Audiobookshelf ist unter dieser URL nicht erreichbar",
+      "abs_invalid_auth": "Audiobookshelf hat den Token abgelehnt",
+      "ssl_error": "SSL-Prüfung fehlgeschlagen – bei selbstsignierten Zertifikaten „SSL-Zertifikat prüfen“ deaktivieren",
+      "unknown": "Unerwarteter Fehler – Details im Home-Assistant-Log"
+    },
+    "abort": {
+      "reconfigure_successful": "Verbindung aktualisiert",
+      "single_instance_allowed": "Es wird nur eine Books-Integration unterstützt"
+    }
+  }
+}
