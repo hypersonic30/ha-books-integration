@@ -13,11 +13,13 @@ CONF_RESCUE_IMPORTS = "rescue_imports"
 CONF_NOTIFY_SERVICE = "notify_service"
 CONF_DEBUG_LOGGING = "debug_logging"
 CONF_SYNC_PROGRESS = "sync_progress"
+CONF_SYNC_PROGRESS_WRITE = "sync_progress_write"
 
 DEFAULT_VERIFY_SSL = True
 DEFAULT_RESCUE_IMPORTS = True
 DEFAULT_DEBUG_LOGGING = False
 DEFAULT_SYNC_PROGRESS = False
+DEFAULT_SYNC_PROGRESS_WRITE = False
 
 REQUEST_TIMEOUT = 10
 # Chaptarr's /release and /search endpoints query every indexer synchronously.

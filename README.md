@@ -72,6 +72,7 @@ Settings → Devices & Services → Add Integration → **Books**:
 | Audiobookshelf API token | token of a **dedicated, restricted** Audiobookshelf user (Settings → Users → create a user without upload/delete/update rights) — not the admin |
 | Tolino bridge URL / token | optional: address of your tolino-bridge (e.g. `http://192.168.1.10:8199`) and its token (`deploy.sh token`). Leave empty to disable "send to Tolino" |
 | Sync reading progress from tolino | optional, **off by default**: every 10 minutes, the reading position and "finished" state of books you sent to tolino are imported into Audiobookshelf (and so the card resumes where you stopped on the reader). Only books sent through this integration; a newer Audiobookshelf state is never overwritten; needs the tolino bridge |
+| Also write reading progress to tolino | optional, **off by default**, needs the option above: the other direction. What you read in the card (position, "finished") is written to the tolino Cloud so the reader continues there. The newer state wins; per book the last seen state on each side is remembered, so nothing ping-pongs |
 | Verify SSL | disable only for self-signed certificates |
 | Automatically repair blocked imports | see above (default on) |
 | Notification target | optional: a notify entity (e.g. `notify.iphone`, as used by `notify.send_message`) or a legacy notify service (e.g. `notify.mobile_app_iphone`); several separated by commas — told when a repair fails |

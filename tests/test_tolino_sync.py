@@ -158,7 +158,7 @@ async def test_abs_write_failure_is_retried(hass, synced, aioclient_mock):
 
 async def test_bridge_down_is_quiet(hass, synced, aioclient_mock):
     aioclient_mock.get(f"{BRIDGE}/progress", exc=aiohttp.ClientConnectionError("down"))
-    assert await synced.async_sync() == {"checked": 0, "imported": [], "skipped": []}
+    assert await synced.async_sync() == {"checked": 0, "imported": [], "exported": [], "skipped": []}
     assert patches(aioclient_mock) == []
 
 
