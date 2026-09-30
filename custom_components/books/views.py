@@ -36,6 +36,7 @@ from .const import (
     SLOW_REQUEST_TIMEOUT,
     TOLINO_FORMATS,
     TOLINO_MAX_BYTES,
+    TOLINO_MAX_COVER_BYTES,
     TOLINO_UPLOAD_TIMEOUT,
 )
 
@@ -423,10 +424,20 @@ class TolinoView(HomeAssistantView):
             return web.json_response({"error": f"Cannot reach Audiobookshelf: {exc}", "code": "abs_error"}, status=502)
 
         filename = _upload_filename(item, ebook_file, fmt)
+        # Tolino shows a generated placeholder for uploads, so hand the bridge Audiobookshelf's cover.
+        # Nice to have: without it the book still goes up.
+        try:
+            cover = await abs_client.fetch_bytes(
+                f"/items/{item_id}/cover?format=jpeg", max_bytes=TOLINO_MAX_COVER_BYTES, timeout=30)
+        except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
+            _LOGGER.info("books: no cover for %s (%s), uploading without", item_id, exc)
+            cover = None
         # quote_fields=False: aiohttp would percent-encode the filename (Dämmerung -> D%C3%A4mmerung)
         # and aiohttp servers don't decode it. Quotes/backslashes/control chars are already stripped.
         form = aiohttp.FormData(quote_fields=False)
         form.add_field("file", content, filename=filename, content_type=_CONTENT_TYPES[fmt])
+        if cover:
+            form.add_field("cover", cover, filename="cover.jpg", content_type="image/jpeg")  # after `file`
         try:
             result = await bridge.request("POST", "/upload", data=form, timeout=TOLINO_UPLOAD_TIMEOUT)
         except UpstreamError as exc:
@@ -439,7 +450,8 @@ class TolinoView(HomeAssistantView):
                                      status=503)
         _LOGGER.info("books: sent '%s' to the Tolino Cloud", filename)
         return web.json_response({"ok": True, "filename": filename,
-                                  "deliverableId": (result or {}).get("deliverableId")})
+                                  "deliverableId": (result or {}).get("deliverableId"),
+                                  "cover": (result or {}).get("cover")})
 
 
 class RescueStatusView(HomeAssistantView):

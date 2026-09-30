@@ -24,9 +24,13 @@ async def tolino_entry(hass):
     return entry
 
 
-def _mock_abs(aioclient_mock, item=ITEM, content=b"PK-epub-bytes"):
+def _mock_abs(aioclient_mock, item=ITEM, content=b"PK-epub-bytes", cover=b"\xff\xd8\xff\xe0cover"):
     aioclient_mock.get(f"{ABS}/api/items/abc123", json=item, headers=JSON)
     aioclient_mock.get(f"{ABS}/api/items/abc123/ebook", content=content)
+    if cover is None:
+        aioclient_mock.get(f"{ABS}/api/items/abc123/cover", status=404, json={}, headers=JSON)
+    else:
+        aioclient_mock.get(f"{ABS}/api/items/abc123/cover", content=cover)
 
 
 async def test_status_disabled_without_bridge(hass, setup_entry, hass_client):
@@ -54,7 +58,7 @@ async def test_send_ok(hass, tolino_entry, hass_client, aioclient_mock):
     aioclient_mock.post(f"{BRIDGE}/upload", json={"deliverableId": "bosh_1", "title": "T"}, headers=JSON)
     resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
     assert resp.status == 200
-    assert await resp.json() == {"ok": True, "filename": "Dämmerung.epub", "deliverableId": "bosh_1"}
+    assert await resp.json() == {"ok": True, "filename": "Dämmerung.epub", "deliverableId": "bosh_1", "cover": None}
     calls = {str(c[1]): c for c in aioclient_mock.mock_calls}
     assert calls[f"{ABS}/api/items/abc123/ebook"][3]["Authorization"] == "Bearer abs-token"
     upload = calls[f"{BRIDGE}/upload"]
@@ -234,3 +238,20 @@ async def test_send_keeps_umlauts_in_multipart_filename(hass, hass_client, socke
     finally:
         await runner.cleanup()
     assert seen == {"name": "Dämmerung.epub", "bytes": b"PK-bytes"}
+
+
+async def test_send_forwards_the_abs_cover(hass, tolino_entry, hass_client, aioclient_mock):
+    _mock_abs(aioclient_mock)
+    aioclient_mock.post(f"{BRIDGE}/upload", json={"deliverableId": "d1", "cover": True}, headers=JSON)
+    resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+    assert (await resp.json())["cover"] is True
+    cover_call = next(c for c in aioclient_mock.mock_calls if "/cover" in str(c[1]))
+    assert cover_call[1].query.get("format") == "jpeg"
+    assert cover_call[3]["Authorization"] == "Bearer abs-token"
+
+
+async def test_send_without_cover_still_uploads(hass, tolino_entry, hass_client, aioclient_mock):
+    _mock_abs(aioclient_mock, cover=None)
+    aioclient_mock.post(f"{BRIDGE}/upload", json={"deliverableId": "d1", "cover": None}, headers=JSON)
+    resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+    assert resp.status == 200 and (await resp.json())["cover"] is None
