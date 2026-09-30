@@ -34,6 +34,8 @@ from .const import (
     PASSTHROUGH_REQUEST_HEADERS,
     PASSTHROUGH_RESPONSE_HEADERS,
     SLOW_REQUEST_TIMEOUT,
+    TOLINO_BRIDGE_TIMEOUT,
+    TOLINO_CONVERTIBLE,
     TOLINO_FORMATS,
     TOLINO_MAX_BYTES,
     TOLINO_MAX_COVER_BYTES,
@@ -331,7 +333,7 @@ class AddBookView(HomeAssistantView):
 
 _ABS_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _UNSAFE_FILENAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
-_CONTENT_TYPES = {"epub": "application/epub+zip", "pdf": "application/pdf"}
+_CONTENT_TYPES = {"epub": "application/epub+zip", "pdf": "application/pdf"}  # anything else: octet-stream
 
 
 def _bridge_error(exc: UpstreamError) -> tuple[str, str, int]:
@@ -345,6 +347,8 @@ def _bridge_error(exc: UpstreamError) -> tuple[str, str, int]:
         return "bridge_auth", "The bridge rejected the token", 502
     if exc.status == 400:
         return code, detail, 415 if code == "bad_type" else 400
+    if exc.status in (415, 422):  # no_converter / convert_failed
+        return code, detail, exc.status
     return code, detail, 503 if exc.status == 503 else 502
 
 
@@ -430,7 +434,7 @@ class TolinoView(HomeAssistantView):
             if not ebook_file:
                 return web.json_response({"error": "This item has no ebook file", "code": "no_ebook"}, status=422)
             fmt = str(ebook_file.get("ebookFormat") or "").lower()
-            if fmt not in TOLINO_FORMATS:
+            if fmt not in TOLINO_FORMATS | TOLINO_CONVERTIBLE:
                 return web.json_response(
                     {"error": f"Tolino Cloud only accepts EPUB and PDF, not '{fmt or 'unknown'}'", "code": "bad_type"},
                     status=415)
@@ -456,11 +460,11 @@ class TolinoView(HomeAssistantView):
         # quote_fields=False: aiohttp would percent-encode the filename (Dämmerung -> D%C3%A4mmerung)
         # and aiohttp servers don't decode it. Quotes/backslashes/control chars are already stripped.
         form = aiohttp.FormData(quote_fields=False)
-        form.add_field("file", content, filename=filename, content_type=_CONTENT_TYPES[fmt])
+        form.add_field("file", content, filename=filename, content_type=_CONTENT_TYPES.get(fmt, "application/octet-stream"))
         if cover:
             form.add_field("cover", cover, filename="cover.jpg", content_type="image/jpeg")  # after `file`
         try:
-            result = await bridge.request("POST", "/upload", data=form, timeout=TOLINO_UPLOAD_TIMEOUT)
+            result = await bridge.request("POST", "/upload", data=form, timeout=TOLINO_BRIDGE_TIMEOUT)
         except UpstreamError as exc:
             code, detail, status = _bridge_error(exc)
             _LOGGER.warning("books: Tolino bridge refused '%s': %s %s", filename, code, detail)

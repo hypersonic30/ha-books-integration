@@ -71,8 +71,8 @@ async def test_send_ok(hass, tolino_entry, hass_client, aioclient_mock):
     assert upload[2] is not None  # multipart form body
 
 
-async def test_send_rejects_non_epub_pdf(hass, tolino_entry, hass_client, aioclient_mock):
-    item = {"media": {"ebookFile": {"ebookFormat": "mobi"}}}
+async def test_send_rejects_formats_nobody_can_convert(hass, tolino_entry, hass_client, aioclient_mock):
+    item = {"media": {"ebookFile": {"ebookFormat": "cbz"}}}
     _mock_abs(aioclient_mock, item)
     resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
     assert resp.status == 415 and (await resp.json())["code"] == "bad_type"
@@ -380,3 +380,57 @@ async def test_replace_treats_bridge_not_found_as_already_gone(hass, tolino_entr
     _mock_abs(aioclient_mock); _bridge_upload(aioclient_mock, "d2")
     aioclient_mock.delete(f"{BRIDGE}/book/d1", status=404, json={"error": "not_found", "detail": "gone"}, headers=JSON)
     assert (await (await _send(c, force=True)).json())["replaced"] is True
+
+
+# --- conversion (MOBI/AZW3/... are converted to EPUB by the bridge) ------------------
+
+@pytest.mark.parametrize("fmt", ["mobi", "azw3", "azw", "prc", "fb2", "lit"])
+async def test_convertible_formats_are_sent_to_the_bridge(hass, tolino_entry, hass_client, aioclient_mock, fmt):
+    item = {"media": {"metadata": {"title": "Kindle Buch"}, "ebookFile": {"ebookFormat": fmt, "metadata": {"filename": f"Kindle Buch.{fmt}"}}}}
+    _mock_abs(aioclient_mock, item); _bridge_upload(aioclient_mock, "d1")
+    resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+    assert resp.status == 200, await resp.text()
+    assert len(_uploads(aioclient_mock)) == 1
+
+
+async def test_convertible_upload_carries_the_original_filename(hass, tolino_entry, hass_client, socket_enabled):
+    """The bridge decides by the file extension, so a .mobi must reach it as .mobi (real sockets: wire format)."""
+    import socket
+    from aiohttp import web
+    seen = {}
+
+    async def item(request):
+        return web.json_response({"media": {"metadata": {"title": "X"}, "ebookFile": {"ebookFormat": "azw3", "metadata": {"filename": "Die Verwandlung.azw3"}}}})
+
+    async def ebook(request):
+        return web.Response(body=b"AZW3-bytes")
+
+    async def upload(request):
+        part = await (await request.multipart()).next()
+        seen["name"], seen["ctype"] = part.filename, part.headers.get("Content-Type")
+        return web.json_response({"deliverableId": "d1"})
+
+    app = web.Application()
+    app.add_routes([web.get("/api/items/abc123", item), web.get("/api/items/abc123/ebook", ebook), web.post("/upload", upload)])
+    runner = web.AppRunner(app); await runner.setup()
+    sock = socket.socket(); sock.bind(("127.0.0.1", 0)); port = sock.getsockname()[1]; sock.close()
+    await web.TCPSite(runner, "127.0.0.1", port).start()
+    base = f"http://127.0.0.1:{port}"
+    try:
+        entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "abs_url": base, "tolino_url": base, "tolino_token": "t"})
+        entry.add_to_hass(hass)
+        assert await hass.config_entries.async_setup(entry.entry_id); await hass.async_block_till_done()
+        resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+        assert resp.status == 200, await resp.text()
+    finally:
+        await runner.cleanup()
+    assert seen == {"name": "Die Verwandlung.azw3", "ctype": "application/octet-stream"}
+
+
+@pytest.mark.parametrize("bridge_status,code,http", [(415, "no_converter", 415), (422, "convert_failed", 422)])
+async def test_conversion_errors_keep_their_code(hass, tolino_entry, hass_client, aioclient_mock, bridge_status, code, http):
+    item = {"media": {"metadata": {"title": "K"}, "ebookFile": {"ebookFormat": "mobi", "metadata": {"filename": "K.mobi"}}}}
+    _mock_abs(aioclient_mock, item)
+    aioclient_mock.post(f"{BRIDGE}/upload", status=bridge_status, json={"error": code, "detail": "why"}, headers=JSON)
+    resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+    assert resp.status == http and (await resp.json())["code"] == code

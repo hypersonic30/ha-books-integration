@@ -23,8 +23,12 @@ SLOW_REQUEST_TIMEOUT = 120
 
 # Tolino Cloud only accepts these; larger files are refused by the bridge anyway.
 TOLINO_FORMATS = frozenset({"epub", "pdf"})
+# Kindle-style formats the bridge converts to EPUB with Calibre (if it is installed there).
+TOLINO_CONVERTIBLE = frozenset({"mobi", "azw", "azw3", "prc", "fb2", "lit"})
 TOLINO_MAX_BYTES = 100 * 1024 * 1024
 TOLINO_UPLOAD_TIMEOUT = 180
+# The bridge may convert first (Calibre can take a while on big books).
+TOLINO_BRIDGE_TIMEOUT = 660
 TOLINO_MAX_COVER_BYTES = 10 * 1024 * 1024
 
 RESCUE_INTERVAL_SECONDS = 120
