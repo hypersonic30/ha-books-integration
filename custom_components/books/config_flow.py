@@ -24,11 +24,13 @@ from .const import (
     CONF_DEBUG_LOGGING,
     CONF_NOTIFY_SERVICE,
     CONF_RESCUE_IMPORTS,
+    CONF_SYNC_PROGRESS,
     CONF_TOLINO_TOKEN,
     CONF_TOLINO_URL,
     CONF_VERIFY_SSL,
     DEFAULT_DEBUG_LOGGING,
     DEFAULT_RESCUE_IMPORTS,
+    DEFAULT_SYNC_PROGRESS,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
     REQUEST_TIMEOUT,
@@ -48,6 +50,7 @@ def _schema(defaults: dict) -> vol.Schema:
         vol.Required(CONF_ABS_TOKEN, default=defaults.get(CONF_ABS_TOKEN, "")): _PASSWORD,
         vol.Optional(CONF_TOLINO_URL, description={"suggested_value": defaults.get(CONF_TOLINO_URL, "")}): _URL,
         vol.Optional(CONF_TOLINO_TOKEN, description={"suggested_value": defaults.get(CONF_TOLINO_TOKEN, "")}): _PASSWORD,
+        vol.Required(CONF_SYNC_PROGRESS, default=defaults.get(CONF_SYNC_PROGRESS, DEFAULT_SYNC_PROGRESS)): bool,
         vol.Required(CONF_VERIFY_SSL, default=defaults.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)): bool,
         vol.Required(
             CONF_RESCUE_IMPORTS, default=defaults.get(CONF_RESCUE_IMPORTS, DEFAULT_RESCUE_IMPORTS)

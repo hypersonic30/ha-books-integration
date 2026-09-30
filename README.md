@@ -71,6 +71,7 @@ Settings → Devices & Services → Add Integration → **Books**:
 | Audiobookshelf URL | e.g. `http://192.168.1.10:13378` |
 | Audiobookshelf API token | token of a **dedicated, restricted** Audiobookshelf user (Settings → Users → create a user without upload/delete/update rights) — not the admin |
 | Tolino bridge URL / token | optional: address of your tolino-bridge (e.g. `http://192.168.1.10:8199`) and its token (`deploy.sh token`). Leave empty to disable "send to Tolino" |
+| Sync reading progress from tolino | optional, **off by default**: every 10 minutes, the reading position and "finished" state of books you sent to tolino are imported into Audiobookshelf (and so the card resumes where you stopped on the reader). Only books sent through this integration; a newer Audiobookshelf state is never overwritten; needs the tolino bridge |
 | Verify SSL | disable only for self-signed certificates |
 | Automatically repair blocked imports | see above (default on) |
 | Notification target | optional: a notify entity (e.g. `notify.iphone`, as used by `notify.send_message`) or a legacy notify service (e.g. `notify.mobile_app_iphone`); several separated by commas — told when a repair fails |
@@ -94,6 +95,7 @@ Change anything later with the integration's **Reconfigure** action; it applies 
 | `POST /api/books/add` | adds a search result as ebook/audiobook, "only this book" |
 | `GET /api/books/tolino` | tolino-bridge status (`enabled`, `reachable`, `logged_in`, `error`) |
 | `POST /api/books/tolino` `{abs_item_id, force?}` (409 `already_sent` if it is still in the cloud; `force` replaces the cloud copy) | sends that item's EPUB/PDF to the Tolino Cloud (errors carry a `code`: `bad_type`, `no_ebook`, `too_large`, `captcha`, `login_backoff`, `unreachable`, …) |
+| `POST /api/books/tolino-sync` | runs the reading-progress import now (409 `sync_disabled` if it is switched off) |
 | `GET /api/books/rescue` | recent import-repair events |
 
 All endpoints require a Home Assistant login.

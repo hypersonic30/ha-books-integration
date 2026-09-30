@@ -496,6 +496,24 @@ class TolinoView(HomeAssistantView):
                                   "cover": (result or {}).get("cover"), "replaced": replaced})
 
 
+class TolinoSyncView(HomeAssistantView):
+    """POST /api/books/tolino-sync - run the reading-progress import now (same job the timer runs)."""
+
+    url = "/api/books/tolino-sync"
+    name = "api:books:tolino-sync"
+    requires_auth = True
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self._hass = hass
+
+    async def post(self, request: web.Request) -> web.Response:
+        sync = self._hass.data[DOMAIN]["progress_sync"]
+        if not sync.enabled:
+            return web.json_response({"error": "Progress sync is switched off or no Tolino bridge is configured",
+                                      "code": "sync_disabled"}, status=409)
+        return web.json_response(await sync.async_sync())
+
+
 class RescueStatusView(HomeAssistantView):
     """GET /api/books/rescue — recent import-rescue events for the card."""
 

@@ -28,6 +28,12 @@ class SentRegistry:
                                "at": dt_util.utcnow().isoformat()}
         await self._store.async_save(self.items)
 
+    async def async_update(self, item_id: str, **fields) -> None:
+        """Merge extra fields (e.g. the last imported reading state) into an existing entry."""
+        if item_id in self.items:
+            self.items[item_id].update(fields)
+            await self._store.async_save(self.items)
+
     async def async_remove(self, item_id: str) -> None:
         if self.items.pop(item_id, None) is not None:
             await self._store.async_save(self.items)

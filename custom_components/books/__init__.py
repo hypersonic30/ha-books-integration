@@ -9,10 +9,11 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 
-from .const import CONF_DEBUG_LOGGING, DOMAIN, RESCUE_INTERVAL_SECONDS
+from .const import CONF_DEBUG_LOGGING, DOMAIN, RESCUE_INTERVAL_SECONDS, SYNC_INTERVAL_SECONDS
 from .api import TolinoBridgeClient
 from .rescue import ImportRescue
 from .tolino_registry import SentRegistry
+from .tolino_sync import ProgressSync
 from .tolino_watch import TolinoWatcher
 from .views import (
     AbsProxyView,
@@ -20,6 +21,7 @@ from .views import (
     ChaptarrMediaView,
     ChaptarrProxyView,
     RescueStatusView,
+    TolinoSyncView,
     TolinoView,
 )
 
@@ -40,13 +42,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # HTTP views can't be unregistered; hass.data survives entry reloads, so
     # register them once per HA run.
     if not data.get("views_registered"):
-        for view in (ChaptarrProxyView, ChaptarrMediaView, AbsProxyView, AddBookView, RescueStatusView, TolinoView):
+        for view in (ChaptarrProxyView, ChaptarrMediaView, AbsProxyView, AddBookView, RescueStatusView, TolinoView, TolinoSyncView):
             hass.http.register_view(view(hass))
         data["views_registered"] = True
 
     if "tolino_sent" not in data:
         data["tolino_sent"] = SentRegistry(hass)
         await data["tolino_sent"].async_load()
+
+    data["progress_sync"] = data.get("progress_sync") or ProgressSync(hass)
+    entry.async_on_unload(
+        async_track_time_interval(hass, data["progress_sync"].async_tick, timedelta(seconds=SYNC_INTERVAL_SECONDS))
+    )
 
     rescue = data.get("rescue") or ImportRescue(hass)
     data["rescue"] = rescue
