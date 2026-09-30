@@ -480,7 +480,9 @@ class TolinoView(HomeAssistantView):
                 await bridge.request("DELETE", f"/book/{prior['deliverableId']}", timeout=60)
                 replaced = True
             except UpstreamError as exc:
-                replaced = exc.status == 404  # already gone counts as replaced
+                # Only the bridge's own `not_found` means "already gone". A bare 404 is an older bridge
+                # without DELETE /book/{id}: the old copy is still there.
+                replaced = _bridge_error(exc)[0] == "not_found"
                 if not replaced:
                     _LOGGER.warning("books: could not remove the old Tolino copy of '%s': %s", filename, exc)
             except (aiohttp.ClientError, TimeoutError) as exc:

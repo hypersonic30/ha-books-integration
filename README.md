@@ -55,7 +55,10 @@ Copy `custom_components/books/` into `config/custom_components/` and restart Hom
   Tolino Cloud through the optional [tolino-bridge](https://github.com/hypersonic30/tolino-bridge)
   service; the book then shows up in the tolino app on iOS and Android after a sync. Home Assistant
   fetches the file from Audiobookshelf itself, so neither the file nor the bridge token passes
-  through the browser.
+  through the browser. Books that were already sent are remembered (a second tap asks before replacing the
+  cloud copy — never a silent duplicate), and a **`binary_sensor.tolino_bridge_problem`** turns on when the
+  bridge is unreachable or not logged in at Thalia; after two bad polls (10 min) you get a persistent
+  notification and, if configured, a push — and one all-clear when it recovers.
 
 ## Setup
 
@@ -90,7 +93,7 @@ Change anything later with the integration's **Reconfigure** action; it applies 
 | `/api/books/abs/{path}` | Audiobookshelf `/api/{path}` (streamed) |
 | `POST /api/books/add` | adds a search result as ebook/audiobook, "only this book" |
 | `GET /api/books/tolino` | tolino-bridge status (`enabled`, `reachable`, `logged_in`, `error`) |
-| `POST /api/books/tolino` `{abs_item_id}` | sends that item's EPUB/PDF to the Tolino Cloud (errors carry a `code`: `bad_type`, `no_ebook`, `too_large`, `captcha`, `login_backoff`, `unreachable`, …) |
+| `POST /api/books/tolino` `{abs_item_id, force?}` (409 `already_sent` if it is still in the cloud; `force` replaces the cloud copy) | sends that item's EPUB/PDF to the Tolino Cloud (errors carry a `code`: `bad_type`, `no_ebook`, `too_large`, `captcha`, `login_backoff`, `unreachable`, …) |
 | `GET /api/books/rescue` | recent import-repair events |
 
 All endpoints require a Home Assistant login.

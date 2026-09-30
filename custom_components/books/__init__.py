@@ -5,12 +5,15 @@ from datetime import timedelta
 import logging
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import CONF_DEBUG_LOGGING, DOMAIN, RESCUE_INTERVAL_SECONDS
+from .api import TolinoBridgeClient
 from .rescue import ImportRescue
 from .tolino_registry import SentRegistry
+from .tolino_watch import TolinoWatcher
 from .views import (
     AbsProxyView,
     AddBookView,
@@ -19,6 +22,8 @@ from .views import (
     RescueStatusView,
     TolinoView,
 )
+
+PLATFORMS = [Platform.BINARY_SENSOR]
 
 # Setting the level here also governs the submodules (they inherit it).
 _PKG_LOGGER = logging.getLogger(__package__)
@@ -48,9 +53,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(
         async_track_time_interval(hass, rescue.async_tick, timedelta(seconds=RESCUE_INTERVAL_SECONDS))
     )
+    # Optional: only watch the bridge when one is configured.
+    data.pop("tolino_watcher", None)
+    if TolinoBridgeClient(hass, data["config"]).configured:
+        data["tolino_watcher"] = TolinoWatcher(hass, entry)
+        # Background: a bridge that is down must not delay Home Assistant's startup by its timeout.
+        entry.async_create_background_task(hass, data["tolino_watcher"].async_refresh(), "books_tolino_first_poll")
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    hass.data.get(DOMAIN, {}).pop("config", None)
-    return True
+    ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if ok:
+        hass.data.get(DOMAIN, {}).pop("config", None)
+        hass.data.get(DOMAIN, {}).pop("tolino_watcher", None)
+    return ok

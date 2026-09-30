@@ -15,7 +15,12 @@ JSON = {"Content-Type": "application/json"}
 
 
 @pytest.fixture
-async def tolino_entry(hass):
+async def tolino_entry(hass, monkeypatch):
+    # The bridge watcher has its own tests; here it must not make requests of its own (its first poll runs in
+    # the background and would create the HTTP session before aioclient_mock is in place).
+    async def healthy(self):
+        return {"reachable": True, "logged_in": True, "problem": False}
+    monkeypatch.setattr("custom_components.books.tolino_watch.TolinoWatcher._async_update_data", healthy)
     entry = MockConfigEntry(domain=DOMAIN, title="Books",
                             data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bridge-token"})
     entry.add_to_hass(hass)
@@ -354,3 +359,24 @@ async def test_sent_registry_survives_reload(hass, tolino_entry, hass_client, ai
     assert await hass.config_entries.async_reload(tolino_entry.entry_id)
     await hass.async_block_till_done()
     assert "abc123" in (await (await c.get("/api/books/tolino")).json())["sent"]
+
+
+async def test_replace_with_old_bridge_is_not_reported_as_replaced(hass, tolino_entry, hass_client, aioclient_mock):
+    """An older bridge has no DELETE route (bare 404). The old copy is still in the cloud: say so."""
+    _mock_abs(aioclient_mock); _bridge_upload(aioclient_mock, "d1")
+    c = await hass_client()
+    await _send(c)
+    aioclient_mock.clear_requests()
+    _mock_abs(aioclient_mock); _bridge_upload(aioclient_mock, "d2")
+    aioclient_mock.delete(f"{BRIDGE}/book/d1", status=404, text="404: Not Found")
+    assert (await (await _send(c, force=True)).json())["replaced"] is False
+
+
+async def test_replace_treats_bridge_not_found_as_already_gone(hass, tolino_entry, hass_client, aioclient_mock):
+    _mock_abs(aioclient_mock); _bridge_upload(aioclient_mock, "d1")
+    c = await hass_client()
+    await _send(c)
+    aioclient_mock.clear_requests()
+    _mock_abs(aioclient_mock); _bridge_upload(aioclient_mock, "d2")
+    aioclient_mock.delete(f"{BRIDGE}/book/d1", status=404, json={"error": "not_found", "detail": "gone"}, headers=JSON)
+    assert (await (await _send(c, force=True)).json())["replaced"] is True

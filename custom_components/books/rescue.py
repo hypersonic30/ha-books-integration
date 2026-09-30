@@ -31,7 +31,8 @@ from homeassistant.components import persistent_notification
 from homeassistant.core import HomeAssistant
 
 from .api import ChaptarrClient, UpstreamError, get_config
-from .const import CONF_NOTIFY_SERVICE, CONF_RESCUE_IMPORTS, DEFAULT_RESCUE_IMPORTS
+from .const import CONF_RESCUE_IMPORTS, DEFAULT_RESCUE_IMPORTS
+from .notify_helper import async_push
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -249,32 +250,4 @@ class ImportRescue:
         await self._push(f"{book_title or download}: {reason}")
 
     async def _push(self, message: str) -> None:
-        """Notify every configured target (comma-separated).
-
-        A target may be a notify *entity* (modern ``notify.send_message``, e.g.
-        ``notify.iphone_von_max``) or a legacy notify *service* (e.g.
-        ``notify.mobile_app_iphone_von_max``); entities win when both exist.
-        """
-        title = "Buch-Import fehlgeschlagen"
-        raw = get_config(self._hass).get(CONF_NOTIFY_SERVICE) or ""
-        entities: list[str] = []
-        for target in (t.strip() for t in raw.split(",")):
-            if not target:
-                continue
-            if "." not in target:
-                target = f"notify.{target}"
-            domain, _, name = target.partition(".")
-            if domain == "notify" and self._hass.states.get(target) is not None:
-                entities.append(target)
-            elif self._hass.services.has_service(domain, name):
-                await self._hass.services.async_call(
-                    domain, name, {"title": title, "message": message}, blocking=False
-                )
-            else:
-                _LOGGER.warning("books rescue: '%s' is neither a notify entity nor a notify service", target)
-        if entities:
-            await self._hass.services.async_call(
-                "notify", "send_message",
-                {"entity_id": entities, "title": title, "message": message},
-                blocking=False,
-            )
+        await async_push(self._hass, "Buch-Import fehlgeschlagen", message)
