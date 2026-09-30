@@ -4,19 +4,13 @@ Opt-in (config: sync_progress, default off). Every SYNC_INTERVAL_SECONDS the bri
 Tolino's side) and newer states are written to Audiobookshelf. Newest wins: an Audiobookshelf state that is newer than
 Tolino's is never overwritten.
 
-Tolino positions look like 'OEBPS/part0045.xhtml#point(/1/4/230/1:138)'. That is an EPUB-CFI-style path below the
-spine document; verified against a real book (the highlight Tolino recorded at such a path is exactly where epub.js
-finds its text), except that Tolino's character offset counts extra spaces before punctuation. So the location
-handed to the reader is the start of that text node / element: paragraph precision, which is what resuming needs.
+Tolino positions ('OEBPS/part0045.xhtml#point(/1/4/230/1:138)') count child NODES of the document, not CFI elements; see
+positions.py for the mapping (computed from the real document structure) and its limits (paragraph precision).
 """
 from __future__ import annotations
 
-import io
 import logging
-import posixpath
-import re
 import zipfile
-from urllib.parse import unquote
 from xml.etree import ElementTree as ET
 
 import aiohttp
@@ -25,45 +19,13 @@ from homeassistant.core import HomeAssistant
 
 from .api import AbsClient, TolinoBridgeClient, UpstreamError, get_config
 from .const import CONF_SYNC_PROGRESS, DEFAULT_SYNC_PROGRESS, DOMAIN, TOLINO_MAX_BYTES, TOLINO_UPLOAD_TIMEOUT
+from .positions import Epub, point_to_cfi
 
 _LOGGER = logging.getLogger(__name__)
-
-_NS = {"c": "urn:oasis:names:tc:opendocument:xmlns:container", "o": "http://www.idpf.org/2007/opf"}
-
-
-def spine_hrefs(epub: bytes) -> list[str]:
-    """Zip-root-relative hrefs of the spine documents, in reading order (what the CFI spine step counts)."""
-    z = zipfile.ZipFile(io.BytesIO(epub))
-    opf_path = ET.fromstring(z.read("META-INF/container.xml")).find(".//c:rootfile", _NS).get("full-path")
-    base = posixpath.dirname(opf_path)
-    root = ET.fromstring(z.read(opf_path))
-    manifest = {i.get("id"): unquote(i.get("href", "")) for i in root.iterfind(".//o:manifest/o:item", _NS)}
-    return [posixpath.normpath(posixpath.join(base, manifest[r.get("idref")]))
-            for r in root.iterfind(".//o:spine/o:itemref", _NS) if r.get("idref") in manifest]
-
-
-def tolino_to_cfi(position: str | None, hrefs: list[str]) -> str | None:
-    """'OEBPS/a.xhtml#point(/1/4/230/1:138)' -> 'epubcfi(/6/{2n}!/4/230/1:0)', or None if it can't be mapped."""
-    if not position or "#point(" not in position:
-        return None
-    href, _, rest = position.partition("#point(")
-    path = rest.rstrip(")").split(":", 1)[0]
-    if not re.fullmatch(r"(/\d+)+", path) or not path.startswith("/1/"):
-        return None
-    try:
-        index = hrefs.index(posixpath.normpath(unquote(href)))
-    except ValueError:
-        return None
-    steps = path[2:]                                   # drop the document-root step, keep /4/230/1
-    # A char offset is only valid on a text node (odd last step); elements get no offset.
-    offset = ":0" if int(steps.rsplit("/", 1)[1]) % 2 == 1 else ""
-    return f"epubcfi(/6/{2 * (index + 1)}!{steps}{offset})"
-
 
 class ProgressSync:
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
-        self._spines: dict[tuple[str, str], list[str]] = {}
 
     @property
     def enabled(self) -> bool:
@@ -125,16 +87,11 @@ class ProgressSync:
             body["ebookProgress"] = 1 if finished else progress
         ebook = ((item or {}).get("media") or {}).get("ebookFile") or {}
         if str(ebook.get("ebookFormat") or "").lower() == "epub" and state.get("position") and not finished:
-            cfi = tolino_to_cfi(state["position"], await self._spine(abs_client, item_id, sent["deliverableId"]))
+            epub = Epub(await abs_client.fetch_bytes(
+                f"/items/{item_id}/ebook", max_bytes=TOLINO_MAX_BYTES, timeout=TOLINO_UPLOAD_TIMEOUT))
+            cfi = point_to_cfi(epub, state["position"])
             if cfi:
                 body["ebookLocation"] = cfi
         await abs_client.request("PATCH", f"/me/progress/{item_id}", json=body)
         _LOGGER.info("books: progress sync: %s -> %s", item_id, body)
         return True
-
-    async def _spine(self, abs_client: AbsClient, item_id: str, deliverable_id: str) -> list[str]:
-        key = (item_id, deliverable_id)
-        if key not in self._spines:
-            epub = await abs_client.fetch_bytes(f"/items/{item_id}/ebook", max_bytes=TOLINO_MAX_BYTES, timeout=TOLINO_UPLOAD_TIMEOUT)
-            self._spines[key] = spine_hrefs(epub)
-        return self._spines[key]

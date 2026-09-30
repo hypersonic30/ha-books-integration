@@ -7,7 +7,6 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.books.const import DOMAIN
-from custom_components.books.tolino_sync import spine_hrefs, tolino_to_cfi
 
 from .conftest import ABS, ENTRY_DATA
 
@@ -17,43 +16,29 @@ ITEM = "abc123"
 DID = "bosh_3_1"
 
 
-def make_epub(spine=("a.xhtml", "b.xhtml", "c d.xhtml"), opf_dir="OEBPS"):
+DOC_ALIGNED = """<html xmlns="http://www.w3.org/1999/xhtml">
+  <head><title>t</title></head>
+  <body>
+    <h1>Title</h1>
+    <p>Hello <b>bold</b> tail</p>
+  </body>
+</html>"""
+# compact markup like the Harry Potter files: no whitespace between most tags -> Tolino's node numbers != CFI numbers
+DOC_COMPACT = '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title></head> <body><p>a</p> <h1>Head</h1> <p>c<i>x</i>d</p></body></html>'
+
+
+def make_epub(spine=("a.xhtml", "b.xhtml", "c d.xhtml"), opf_dir="OEBPS", docs=None):
+    docs = docs or {"a.xhtml": DOC_ALIGNED, "b.xhtml": DOC_ALIGNED, "c d.xhtml": DOC_COMPACT}
     manifest = "".join(f'<item id="i{n}" href="{h.replace(" ", "%20")}" media-type="application/xhtml+xml"/>' for n, h in enumerate(spine))
-    manifest += '<item id="img" href="cover.jpg" media-type="image/jpeg"/>'
     itemrefs = "".join(f'<itemref idref="i{n}"/>' for n in range(len(spine)))
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("mimetype", "application/epub+zip")
         z.writestr("META-INF/container.xml", f'<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="{opf_dir}/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>')
         z.writestr(f"{opf_dir}/content.opf", f'<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="2.0"><manifest>{manifest}</manifest><spine>{itemrefs}</spine></package>')
+        for name in spine:
+            z.writestr(f"{opf_dir}/{name}", docs.get(name, DOC_ALIGNED))
     return buf.getvalue()
-
-
-# --- pure functions -------------------------------------------------------------------
-
-def test_spine_hrefs_are_zip_root_relative_and_decoded():
-    assert spine_hrefs(make_epub()) == ["OEBPS/a.xhtml", "OEBPS/b.xhtml", "OEBPS/c d.xhtml"]
-    assert spine_hrefs(make_epub(opf_dir="OPS/text")) == ["OPS/text/a.xhtml", "OPS/text/b.xhtml", "OPS/text/c d.xhtml"]
-
-
-HREFS = ["OEBPS/a.xhtml", "OEBPS/b.xhtml", "OEBPS/c d.xhtml"]
-
-
-@pytest.mark.parametrize("position,expected", [
-    ("OEBPS/a.xhtml#point(/1/4/230/1:138)", "epubcfi(/6/2!/4/230/1:0)"),       # text node: keep a (zero) offset
-    ("OEBPS/b.xhtml#point(/1/4/10/5:1)", "epubcfi(/6/4!/4/10/5:0)"),
-    ("OEBPS/c d.xhtml#point(/1/2/2/18/2/1:0)", "epubcfi(/6/6!/2/2/18/2/1:0)"),
-    ("OEBPS/c%20d.xhtml#point(/1/4/2:0)", "epubcfi(/6/6!/4/2)"),                # element step: no offset, %20 matches
-    ("./OEBPS/b.xhtml#point(/1/4/4:0)", "epubcfi(/6/4!/4/4)"),
-])
-def test_tolino_position_to_cfi(position, expected):
-    assert tolino_to_cfi(position, HREFS) == expected
-
-
-@pytest.mark.parametrize("position", [None, "", "OEBPS/a.xhtml", "OEBPS/zzz.xhtml#point(/1/4/2:0)", "OEBPS/a.xhtml#point(/4/2:0)",
-                                      "OEBPS/a.xhtml#point(/1/x/2:0)", "OEBPS/a.xhtml#point()"])
-def test_unmappable_positions_give_none(position):
-    assert tolino_to_cfi(position, HREFS) is None
 
 
 # --- the sync job ----------------------------------------------------------------------
@@ -104,15 +89,15 @@ async def test_second_run_without_news_writes_nothing(hass, synced, aioclient_mo
     mock_world(aioclient_mock, {DID: state()})
     await synced.async_sync(); await synced.async_sync()
     assert len(patches(aioclient_mock)) == 1
-    assert sum(1 for c in aioclient_mock.mock_calls if str(c[1]).endswith("/ebook")) == 1     # spine cached too
+    assert sum(1 for c in aioclient_mock.mock_calls if str(c[1]).endswith("/ebook")) == 1
 
 
 async def test_newer_tolino_state_is_imported_again(hass, synced, aioclient_mock):
     mock_world(aioclient_mock, {DID: state(0.5, modified=2000)})
     await synced.async_sync()
-    aioclient_mock.clear_requests(); mock_world(aioclient_mock, {DID: state(0.7, "OEBPS/c d.xhtml#point(/1/4/6/1:0)", 5000)})
+    aioclient_mock.clear_requests(); mock_world(aioclient_mock, {DID: state(0.7, "OEBPS/c d.xhtml#point(/1/3/3/1:0)", 5000)})
     await synced.async_sync()
-    assert patches(aioclient_mock)[-1]["ebookProgress"] == 0.7 and patches(aioclient_mock)[-1]["ebookLocation"] == "epubcfi(/6/6!/4/6/1:0)"
+    assert patches(aioclient_mock)[-1]["ebookProgress"] == 0.7 and patches(aioclient_mock)[-1]["ebookLocation"] == "epubcfi(/6/6!/4/4/1:0)"
 
 
 async def test_newer_audiobookshelf_state_is_never_overwritten(hass, synced, aioclient_mock):
@@ -221,3 +206,10 @@ async def test_manual_endpoint(hass, synced, hass_client, hass_client_no_auth, a
 async def test_manual_endpoint_refuses_when_off(hass, hass_client, setup_entry):
     resp = await (await hass_client()).post("/api/books/tolino-sync")
     assert resp.status == 409 and (await resp.json())["code"] == "sync_disabled"
+
+
+async def test_compact_markup_is_resolved_by_structure_not_by_numbers(hass, synced, aioclient_mock):
+    """Regression for v0.4.0: Tolino's /1/3/3/1 in a compact document is body -> h1 -> text, NOT CFI /3/3/1."""
+    mock_world(aioclient_mock, {DID: state(0.89, "OEBPS/c d.xhtml#point(/1/3/3/1:0)")})
+    await synced.async_sync()
+    assert patches(aioclient_mock)[0]["ebookLocation"] == "epubcfi(/6/6!/4/4/1:0)"
