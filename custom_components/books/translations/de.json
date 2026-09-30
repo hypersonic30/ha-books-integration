@@ -11,7 +11,7 @@
           "abs_token": "Audiobookshelf-API-Token",
           "verify_ssl": "SSL-Zertifikat prüfen",
           "rescue_imports": "Blockierte Importe automatisch reparieren",
-          "notify_service": "Benachrichtigungsdienst (optional)",
+          "notify_service": "Benachrichtigung (optional)",
           "debug_logging": "Debug-Logging aktivieren"
         },
         "data_description": {
@@ -21,7 +21,7 @@
           "abs_token": "Token eines eigenen, eingeschränkten Audiobookshelf-Benutzers (Settings → Users), nicht des Admins",
           "verify_ssl": "Nur deaktivieren, wenn ein selbstsigniertes Zertifikat verwendet wird",
           "rescue_imports": "Ordnet Downloads, die Chaptarr wegen einer Titelverwechslung innerhalb derselben Serie blockiert, dem Buch zu, für das sie geholt wurden",
-          "notify_service": "Wird benachrichtigt, wenn eine automatische Reparatur scheitert, z. B. notify.mobile_app_iphone",
+          "notify_service": "Benachrichtigungs-Entität (z. B. notify.iphone_von_max) oder Benachrichtigungsdienst (z. B. notify.mobile_app_iphone_von_max). Mehrere mit Komma trennen. Wird benachrichtigt, wenn eine automatische Reparatur scheitert.",
           "debug_logging": "Protokolliert jede weitergeleitete Anfrage auf Debug-Ebene"
         }
       },
@@ -34,7 +34,7 @@
           "abs_token": "Audiobookshelf-API-Token",
           "verify_ssl": "SSL-Zertifikat prüfen",
           "rescue_imports": "Blockierte Importe automatisch reparieren",
-          "notify_service": "Benachrichtigungsdienst (optional)",
+          "notify_service": "Benachrichtigung (optional)",
           "debug_logging": "Debug-Logging aktivieren"
         },
         "data_description": {
@@ -44,7 +44,7 @@
           "abs_token": "Token eines eigenen, eingeschränkten Audiobookshelf-Benutzers (Settings → Users), nicht des Admins",
           "verify_ssl": "Nur deaktivieren, wenn ein selbstsigniertes Zertifikat verwendet wird",
           "rescue_imports": "Ordnet Downloads, die Chaptarr wegen einer Titelverwechslung innerhalb derselben Serie blockiert, dem Buch zu, für das sie geholt wurden",
-          "notify_service": "Wird benachrichtigt, wenn eine automatische Reparatur scheitert, z. B. notify.mobile_app_iphone",
+          "notify_service": "Benachrichtigungs-Entität (z. B. notify.iphone_von_max) oder Benachrichtigungsdienst (z. B. notify.mobile_app_iphone_von_max). Mehrere mit Komma trennen. Wird benachrichtigt, wenn eine automatische Reparatur scheitert.",
           "debug_logging": "Protokolliert jede weitergeleitete Anfrage auf Debug-Ebene"
         }
       }

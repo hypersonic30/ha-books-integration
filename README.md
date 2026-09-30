@@ -41,7 +41,7 @@ uses your normal Home Assistant session. The integration creates **no entities**
   it was grabbed for — but only when unambiguous (same author, same media type, no existing file,
   an allowed file format, one book per grab). Anything else is left alone; each download gets one
   attempt; a failed attempt creates a Home Assistant notification and, optionally, a push
-  notification via a `notify` service.
+  notification to notify entities or services.
 
 ## Installation
 
@@ -64,7 +64,7 @@ Settings → Devices & Services → Add Integration → **Books**:
 | Audiobookshelf API token | token of a **dedicated, restricted** Audiobookshelf user (Settings → Users → create a user without upload/delete/update rights) — not the admin |
 | Verify SSL | disable only for self-signed certificates |
 | Automatically repair blocked imports | see above (default on) |
-| Notify service | optional, e.g. `notify.mobile_app_iphone` — told when a repair fails |
+| Notification target | optional: a notify entity (e.g. `notify.iphone`, as used by `notify.send_message`) or a legacy notify service (e.g. `notify.mobile_app_iphone`); several separated by commas — told when a repair fails |
 
 Change anything later with the integration's **Reconfigure** action; it applies immediately.
 

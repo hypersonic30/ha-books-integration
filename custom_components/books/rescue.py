@@ -246,17 +246,35 @@ class ImportRescue:
             self._hass, message, title="Books: import needs attention",
             notification_id=f"books_rescue_{abs(hash(download))}",
         )
-        service = (get_config(self._hass).get(CONF_NOTIFY_SERVICE) or "").strip()
-        if service:
-            domain, _, name = service.partition(".")
-            if not name:
-                domain, name = "notify", domain
-            if self._hass.services.has_service(domain, name):
+        await self._push(f"{book_title or download}: {reason}")
+
+    async def _push(self, message: str) -> None:
+        """Notify every configured target (comma-separated).
+
+        A target may be a notify *entity* (modern ``notify.send_message``, e.g.
+        ``notify.iphone_von_max``) or a legacy notify *service* (e.g.
+        ``notify.mobile_app_iphone_von_max``); entities win when both exist.
+        """
+        title = "Buch-Import fehlgeschlagen"
+        raw = get_config(self._hass).get(CONF_NOTIFY_SERVICE) or ""
+        entities: list[str] = []
+        for target in (t.strip() for t in raw.split(",")):
+            if not target:
+                continue
+            if "." not in target:
+                target = f"notify.{target}"
+            domain, _, name = target.partition(".")
+            if domain == "notify" and self._hass.states.get(target) is not None:
+                entities.append(target)
+            elif self._hass.services.has_service(domain, name):
                 await self._hass.services.async_call(
-                    domain, name,
-                    {"title": "Buch-Import fehlgeschlagen",
-                     "message": f"{book_title or download}: {reason}"},
-                    blocking=False,
+                    domain, name, {"title": title, "message": message}, blocking=False
                 )
             else:
-                _LOGGER.warning("books rescue: notify service '%s' does not exist", service)
+                _LOGGER.warning("books rescue: '%s' is neither a notify entity nor a notify service", target)
+        if entities:
+            await self._hass.services.async_call(
+                "notify", "send_message",
+                {"entity_id": entities, "title": title, "message": message},
+                blocking=False,
+            )

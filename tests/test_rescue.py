@@ -177,3 +177,21 @@ async def test_rescue_disabled_does_nothing(hass, entry, aioclient_mock):
     _mock_chaptarr(aioclient_mock)
     await hass.data[DOMAIN]["rescue"].async_tick()
     assert aioclient_mock.call_count == 0
+
+
+async def test_rescue_failure_uses_notify_entities(hass, entry, aioclient_mock):
+    entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, "notify_service": "notify.iphone_admin, notify.mobile_app_legacy"}
+    )
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    hass.states.async_set("notify.iphone_admin", "unknown")
+    send = async_mock_service(hass, "notify", "send_message")
+    legacy = async_mock_service(hass, "notify", "mobile_app_legacy")
+    _mock_chaptarr(aioclient_mock, target_files_after=0)
+    await hass.data[DOMAIN]["rescue"].async_tick()
+    await hass.async_block_till_done()
+    assert len(send) == 1 and send[0].data["entity_id"] == ["notify.iphone_admin"]
+    assert "Der Sturm" in send[0].data["message"]
+    assert len(legacy) == 1
+

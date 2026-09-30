@@ -11,7 +11,7 @@
           "abs_token": "Audiobookshelf API token",
           "verify_ssl": "Verify SSL certificate",
           "rescue_imports": "Automatically repair blocked imports",
-          "notify_service": "Notify service (optional)",
+          "notify_service": "Notification target (optional)",
           "debug_logging": "Enable debug logging"
         },
         "data_description": {
@@ -21,7 +21,7 @@
           "abs_token": "Token of a dedicated, restricted Audiobookshelf user (Settings → Users), not the admin",
           "verify_ssl": "Disable only for self-signed certificates",
           "rescue_imports": "Assigns downloads that Chaptarr blocks because of a same-series title mix-up to the book they were grabbed for",
-          "notify_service": "Notified when an automatic repair fails, e.g. notify.mobile_app_iphone",
+          "notify_service": "Notify entity (e.g. notify.iphone_von_max) or notify service (e.g. notify.mobile_app_iphone_von_max); separate several with commas. Notified when an automatic repair fails.",
           "debug_logging": "Logs every proxied request at debug level"
         }
       },
@@ -34,7 +34,7 @@
           "abs_token": "Audiobookshelf API token",
           "verify_ssl": "Verify SSL certificate",
           "rescue_imports": "Automatically repair blocked imports",
-          "notify_service": "Notify service (optional)",
+          "notify_service": "Notification target (optional)",
           "debug_logging": "Enable debug logging"
         },
         "data_description": {
@@ -44,7 +44,7 @@
           "abs_token": "Token of a dedicated, restricted Audiobookshelf user (Settings → Users), not the admin",
           "verify_ssl": "Disable only for self-signed certificates",
           "rescue_imports": "Assigns downloads that Chaptarr blocks because of a same-series title mix-up to the book they were grabbed for",
-          "notify_service": "Notified when an automatic repair fails, e.g. notify.mobile_app_iphone",
+          "notify_service": "Notify entity (e.g. notify.iphone_von_max) or notify service (e.g. notify.mobile_app_iphone_von_max); separate several with commas. Notified when an automatic repair fails.",
           "debug_logging": "Logs every proxied request at debug level"
         }
       }
