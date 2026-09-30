@@ -9,9 +9,16 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 
-from .const import CONF_DEBUG_LOGGING, DOMAIN, RESCUE_INTERVAL_SECONDS, SYNC_INTERVAL_SECONDS
+from .const import (
+    AUTO_SEND_INTERVAL_SECONDS,
+    CONF_DEBUG_LOGGING,
+    DOMAIN,
+    RESCUE_INTERVAL_SECONDS,
+    SYNC_INTERVAL_SECONDS,
+)
 from .api import TolinoBridgeClient
 from .rescue import ImportRescue
+from .tolino_autosend import AutoSender
 from .tolino_registry import SentRegistry
 from .tolino_sync import ProgressSync
 from .tolino_watch import TolinoWatcher
@@ -21,6 +28,7 @@ from .views import (
     ChaptarrMediaView,
     ChaptarrProxyView,
     RescueStatusView,
+    TolinoAutoSendView,
     TolinoSyncView,
     TolinoView,
 )
@@ -42,7 +50,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # HTTP views can't be unregistered; hass.data survives entry reloads, so
     # register them once per HA run.
     if not data.get("views_registered"):
-        for view in (ChaptarrProxyView, ChaptarrMediaView, AbsProxyView, AddBookView, RescueStatusView, TolinoView, TolinoSyncView):
+        for view in (ChaptarrProxyView, ChaptarrMediaView, AbsProxyView, AddBookView, RescueStatusView, TolinoView, TolinoSyncView, TolinoAutoSendView):
             hass.http.register_view(view(hass))
         data["views_registered"] = True
 
@@ -53,6 +61,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     data["progress_sync"] = data.get("progress_sync") or ProgressSync(hass)
     entry.async_on_unload(
         async_track_time_interval(hass, data["progress_sync"].async_tick, timedelta(seconds=SYNC_INTERVAL_SECONDS))
+    )
+
+    data["auto_send"] = data.get("auto_send") or AutoSender(hass)
+    await data["auto_send"].async_start()
+    entry.async_on_unload(
+        async_track_time_interval(hass, data["auto_send"].async_tick, timedelta(seconds=AUTO_SEND_INTERVAL_SECONDS))
     )
 
     rescue = data.get("rescue") or ImportRescue(hass)

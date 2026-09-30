@@ -11,7 +11,6 @@ from __future__ import annotations
 import copy
 import json
 import logging
-import re
 
 import aiohttp
 from aiohttp import web
@@ -20,7 +19,8 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import AbsClient, ChaptarrClient, TolinoBridgeClient, UpstreamError, get_config
+from .api import ChaptarrClient, TolinoBridgeClient, UpstreamError, get_config
+from .tolino_send import SendError, async_send_to_tolino
 from .const import (
     CHAPTARR_ALLOWED_COMMANDS,
     CHAPTARR_BLOCKED_SEGMENTS,
@@ -34,12 +34,6 @@ from .const import (
     PASSTHROUGH_REQUEST_HEADERS,
     PASSTHROUGH_RESPONSE_HEADERS,
     SLOW_REQUEST_TIMEOUT,
-    TOLINO_BRIDGE_TIMEOUT,
-    TOLINO_CONVERTIBLE,
-    TOLINO_FORMATS,
-    TOLINO_MAX_BYTES,
-    TOLINO_MAX_COVER_BYTES,
-    TOLINO_UPLOAD_TIMEOUT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -331,35 +325,6 @@ class AddBookView(HomeAssistantView):
         return web.json_response({"results": results}, status=status)
 
 
-_ABS_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-_UNSAFE_FILENAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
-_CONTENT_TYPES = {"epub": "application/epub+zip", "pdf": "application/pdf"}  # anything else: octet-stream
-
-
-def _bridge_error(exc: UpstreamError) -> tuple[str, str, int]:
-    """(code, detail, http status) from a tolino-bridge error body."""
-    try:
-        body = json.loads(exc.message)
-        code, detail = str(body.get("error") or "bridge"), str(body.get("detail") or "")
-    except (ValueError, AttributeError):
-        code, detail = "bridge", exc.message
-    if exc.status == 401:
-        return "bridge_auth", "The bridge rejected the token", 502
-    if exc.status == 400:
-        return code, detail, 415 if code == "bad_type" else 400
-    if exc.status in (415, 422):  # no_converter / convert_failed
-        return code, detail, exc.status
-    return code, detail, 503 if exc.status == 503 else 502
-
-
-def _upload_filename(item: dict, ebook_file: dict, fmt: str) -> str:
-    name = ((ebook_file.get("metadata") or {}).get("filename") or "").strip()
-    if not name.lower().endswith(f".{fmt}"):
-        title = ((item.get("media") or {}).get("metadata") or {}).get("title") or "book"
-        name = f"{title}.{fmt}"
-    return _UNSAFE_FILENAME.sub("_", name)[:180]
-
-
 class TolinoView(HomeAssistantView):
     """GET /api/books/tolino (bridge status) and POST {abs_item_id} (send the ebook to the Tolino Cloud).
 
@@ -393,107 +358,20 @@ class TolinoView(HomeAssistantView):
             "sent": self._hass.data[DOMAIN]["tolino_sent"].public(),
         })
 
-    @staticmethod
-    async def _still_in_cloud(bridge: TolinoBridgeClient, deliverable_id: str) -> bool:
-        """Was the earlier upload deleted in the cloud meanwhile? If we can't tell, assume it is still there."""
-        try:
-            library = await bridge.get("/library", timeout=TOLINO_UPLOAD_TIMEOUT)
-        except (UpstreamError, aiohttp.ClientError, TimeoutError):
-            return True
-        return any(b.get("deliverableId") == deliverable_id for b in (library or {}).get("books", []))
-
     async def post(self, request: web.Request) -> web.Response:
-        cfg = get_config(self._hass)
         try:
             data = await request.json()
         except ValueError:
             return web.json_response({"error": "Invalid JSON", "code": "bad_request"}, status=400)
         item_id = data.get("abs_item_id") if isinstance(data, dict) else None
-        if not isinstance(item_id, str) or not _ABS_ID.match(item_id):
+        if not isinstance(item_id, str):
             return web.json_response({"error": "abs_item_id is required", "code": "bad_request"}, status=400)
-        bridge = TolinoBridgeClient(self._hass, cfg)
-        if not bridge.configured:
-            return web.json_response({"error": "The Tolino bridge is not configured", "code": "not_configured"},
-                                     status=503)
-
-        registry = self._hass.data[DOMAIN]["tolino_sent"]
-        force = data.get("force") is True
-        prior = registry.get(item_id)
-        if prior and not force:
-            if await self._still_in_cloud(bridge, prior["deliverableId"]):
-                return web.json_response(
-                    {"error": "This book is already in your Tolino Cloud", "code": "already_sent", "sent_at": prior["at"]},
-                    status=409)
-            await registry.async_remove(item_id)  # deleted in the cloud since -> a fresh send is fine
-            prior = None
-
-        abs_client = AbsClient(self._hass, cfg)
         try:
-            item = await abs_client.get(f"/items/{item_id}")
-            ebook_file = ((item or {}).get("media") or {}).get("ebookFile")
-            if not ebook_file:
-                return web.json_response({"error": "This item has no ebook file", "code": "no_ebook"}, status=422)
-            fmt = str(ebook_file.get("ebookFormat") or "").lower()
-            if fmt not in TOLINO_FORMATS | TOLINO_CONVERTIBLE:
-                return web.json_response(
-                    {"error": f"Tolino Cloud only accepts EPUB and PDF, not '{fmt or 'unknown'}'", "code": "bad_type"},
-                    status=415)
-            content = await abs_client.fetch_bytes(
-                f"/items/{item_id}/ebook", max_bytes=TOLINO_MAX_BYTES, timeout=TOLINO_UPLOAD_TIMEOUT)
-        except UpstreamError as exc:
-            if exc.status == 413:
-                return web.json_response({"error": "The ebook is larger than 100 MB", "code": "too_large"}, status=413)
-            _LOGGER.warning("books: fetching ebook %s from Audiobookshelf failed: %s", item_id, exc)
-            return web.json_response({"error": f"Audiobookshelf: {exc}", "code": "abs_error"}, status=502)
-        except (aiohttp.ClientError, TimeoutError) as exc:
-            return web.json_response({"error": f"Cannot reach Audiobookshelf: {exc}", "code": "abs_error"}, status=502)
-
-        filename = _upload_filename(item, ebook_file, fmt)
-        # Tolino shows a generated placeholder for uploads, so hand the bridge Audiobookshelf's cover.
-        # Nice to have: without it the book still goes up.
-        try:
-            cover = await abs_client.fetch_bytes(
-                f"/items/{item_id}/cover?format=jpeg", max_bytes=TOLINO_MAX_COVER_BYTES, timeout=30)
-        except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
-            _LOGGER.info("books: no cover for %s (%s), uploading without", item_id, exc)
-            cover = None
-        # quote_fields=False: aiohttp would percent-encode the filename (Dämmerung -> D%C3%A4mmerung)
-        # and aiohttp servers don't decode it. Quotes/backslashes/control chars are already stripped.
-        form = aiohttp.FormData(quote_fields=False)
-        form.add_field("file", content, filename=filename, content_type=_CONTENT_TYPES.get(fmt, "application/octet-stream"))
-        if cover:
-            form.add_field("cover", cover, filename="cover.jpg", content_type="image/jpeg")  # after `file`
-        try:
-            result = await bridge.request("POST", "/upload", data=form, timeout=TOLINO_BRIDGE_TIMEOUT)
-        except UpstreamError as exc:
-            code, detail, status = _bridge_error(exc)
-            _LOGGER.warning("books: Tolino bridge refused '%s': %s %s", filename, code, detail)
-            return web.json_response({"error": detail or code, "code": code}, status=status)
-        except (aiohttp.ClientError, TimeoutError) as exc:
-            _LOGGER.warning("books: Tolino bridge unreachable: %s", exc)
-            return web.json_response({"error": f"Cannot reach the Tolino bridge: {exc}", "code": "unreachable"},
-                                     status=503)
-        _LOGGER.info("books: sent '%s' to the Tolino Cloud", filename)
-        new_id = (result or {}).get("deliverableId")
-        if new_id:
-            await registry.async_set(item_id, new_id, filename)
-        replaced = None
-        if prior and new_id and prior["deliverableId"] != new_id:
-            # Replace, don't duplicate: the new copy is safely up, now drop the old one.
-            try:
-                await bridge.request("DELETE", f"/book/{prior['deliverableId']}", timeout=60)
-                replaced = True
-            except UpstreamError as exc:
-                # Only the bridge's own `not_found` means "already gone". A bare 404 is an older bridge
-                # without DELETE /book/{id}: the old copy is still there.
-                replaced = _bridge_error(exc)[0] == "not_found"
-                if not replaced:
-                    _LOGGER.warning("books: could not remove the old Tolino copy of '%s': %s", filename, exc)
-            except (aiohttp.ClientError, TimeoutError) as exc:
-                replaced = False
-                _LOGGER.warning("books: could not remove the old Tolino copy of '%s': %s", filename, exc)
-        return web.json_response({"ok": True, "filename": filename, "deliverableId": new_id,
-                                  "cover": (result or {}).get("cover"), "replaced": replaced})
+            result = await async_send_to_tolino(self._hass, item_id, force=data.get("force") is True)
+        except SendError as exc:
+            return web.json_response({"error": exc.message, "code": exc.code, **exc.extra}, status=exc.status)
+        result.pop("title", None)
+        return web.json_response(result)
 
 
 class TolinoSyncView(HomeAssistantView):
@@ -512,6 +390,24 @@ class TolinoSyncView(HomeAssistantView):
             return web.json_response({"error": "Progress sync is switched off or no Tolino bridge is configured",
                                       "code": "sync_disabled"}, status=409)
         return web.json_response(await sync.async_sync())
+
+
+class TolinoAutoSendView(HomeAssistantView):
+    """POST /api/books/tolino-autosend - run the auto-send job now (same job the timer runs)."""
+
+    url = "/api/books/tolino-autosend"
+    name = "api:books:tolino-autosend"
+    requires_auth = True
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self._hass = hass
+
+    async def post(self, request: web.Request) -> web.Response:
+        job = self._hass.data[DOMAIN]["auto_send"]
+        if not job.enabled:
+            return web.json_response({"error": "Auto-send is switched off or no Tolino bridge is configured",
+                                      "code": "autosend_disabled"}, status=409)
+        return web.json_response(await job.async_run())
 
 
 class RescueStatusView(HomeAssistantView):

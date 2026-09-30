@@ -71,6 +71,7 @@ Settings → Devices & Services → Add Integration → **Books**:
 | Audiobookshelf URL | e.g. `http://192.168.1.10:13378` |
 | Audiobookshelf API token | token of a **dedicated, restricted** Audiobookshelf user (Settings → Users → create a user without upload/delete/update rights) — not the admin |
 | Tolino bridge URL / token | optional: address of your tolino-bridge (e.g. `http://192.168.1.10:8199`) and its token (`deploy.sh token`). Leave empty to disable "send to Tolino" |
+| Automatically send new ebooks to tolino | optional, **off by default**: every 10 minutes, ebooks that newly appear in Audiobookshelf (EPUB/PDF; MOBI/AZW3 are converted by the bridge) are sent to the tolino Cloud. Only books added **after** you switch it on — your existing library is never touched; at most 5 per run. Books that cannot be sent (unsupported, too large, conversion failed) are reported once (notification + push) and not retried; bridge/Thalia trouble is retried next time. Needs the tolino bridge |
 | Sync reading progress from tolino | optional, **off by default**: every 10 minutes, the reading position and "finished" state of books you sent to tolino are imported into Audiobookshelf (and so the card resumes where you stopped on the reader). Only books sent through this integration; a newer Audiobookshelf state is never overwritten; needs the tolino bridge |
 | Also write reading progress to tolino | optional, **off by default**, needs the option above: the other direction. What you read in the card (position, "finished") is written to the tolino Cloud so the reader continues there. The newer state wins; per book the last seen state on each side is remembered, so nothing ping-pongs |
 | Verify SSL | disable only for self-signed certificates |
@@ -96,6 +97,7 @@ Change anything later with the integration's **Reconfigure** action; it applies 
 | `POST /api/books/add` | adds a search result as ebook/audiobook, "only this book" |
 | `GET /api/books/tolino` | tolino-bridge status (`enabled`, `reachable`, `logged_in`, `error`) |
 | `POST /api/books/tolino` `{abs_item_id, force?}` (409 `already_sent` if it is still in the cloud; `force` replaces the cloud copy) | sends that item's EPUB/PDF to the Tolino Cloud (errors carry a `code`: `bad_type`, `no_ebook`, `too_large`, `captcha`, `login_backoff`, `unreachable`, …) |
+| `POST /api/books/tolino-autosend` | runs the auto-send job now (409 `autosend_disabled` if it is switched off) |
 | `POST /api/books/tolino-sync` | runs the reading-progress import now (409 `sync_disabled` if it is switched off) |
 | `GET /api/books/rescue` | recent import-repair events |
 

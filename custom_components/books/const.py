@@ -12,12 +12,14 @@ CONF_VERIFY_SSL = "verify_ssl"
 CONF_RESCUE_IMPORTS = "rescue_imports"
 CONF_NOTIFY_SERVICE = "notify_service"
 CONF_DEBUG_LOGGING = "debug_logging"
+CONF_AUTO_SEND = "auto_send"
 CONF_SYNC_PROGRESS = "sync_progress"
 CONF_SYNC_PROGRESS_WRITE = "sync_progress_write"
 
 DEFAULT_VERIFY_SSL = True
 DEFAULT_RESCUE_IMPORTS = True
 DEFAULT_DEBUG_LOGGING = False
+DEFAULT_AUTO_SEND = False
 DEFAULT_SYNC_PROGRESS = False
 DEFAULT_SYNC_PROGRESS_WRITE = False
 
@@ -37,6 +39,7 @@ TOLINO_MAX_COVER_BYTES = 10 * 1024 * 1024
 
 RESCUE_INTERVAL_SECONDS = 120
 SYNC_INTERVAL_SECONDS = 600
+AUTO_SEND_INTERVAL_SECONDS = 600
 
 # Chaptarr API areas the card never needs. They hold indexer/download-client
 # credentials or can reconfigure/shut down Chaptarr, so the proxy refuses them

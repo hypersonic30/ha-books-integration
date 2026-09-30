@@ -19,6 +19,7 @@ from homeassistant.helpers.selector import (
 from .const import (
     CONF_ABS_TOKEN,
     CONF_ABS_URL,
+    CONF_AUTO_SEND,
     CONF_CHAPTARR_API_KEY,
     CONF_CHAPTARR_URL,
     CONF_DEBUG_LOGGING,
@@ -29,6 +30,7 @@ from .const import (
     CONF_TOLINO_TOKEN,
     CONF_TOLINO_URL,
     CONF_VERIFY_SSL,
+    DEFAULT_AUTO_SEND,
     DEFAULT_DEBUG_LOGGING,
     DEFAULT_RESCUE_IMPORTS,
     DEFAULT_SYNC_PROGRESS,
@@ -52,6 +54,7 @@ def _schema(defaults: dict) -> vol.Schema:
         vol.Required(CONF_ABS_TOKEN, default=defaults.get(CONF_ABS_TOKEN, "")): _PASSWORD,
         vol.Optional(CONF_TOLINO_URL, description={"suggested_value": defaults.get(CONF_TOLINO_URL, "")}): _URL,
         vol.Optional(CONF_TOLINO_TOKEN, description={"suggested_value": defaults.get(CONF_TOLINO_TOKEN, "")}): _PASSWORD,
+        vol.Required(CONF_AUTO_SEND, default=defaults.get(CONF_AUTO_SEND, DEFAULT_AUTO_SEND)): bool,
         vol.Required(CONF_SYNC_PROGRESS, default=defaults.get(CONF_SYNC_PROGRESS, DEFAULT_SYNC_PROGRESS)): bool,
         vol.Required(
             CONF_SYNC_PROGRESS_WRITE, default=defaults.get(CONF_SYNC_PROGRESS_WRITE, DEFAULT_SYNC_PROGRESS_WRITE)

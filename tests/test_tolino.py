@@ -189,7 +189,7 @@ async def test_send_too_large_declared(hass, tolino_entry, hass_client, aioclien
 
 
 async def test_send_too_large_streamed(hass, tolino_entry, hass_client, aioclient_mock, monkeypatch):
-    monkeypatch.setattr("custom_components.books.views.TOLINO_MAX_BYTES", 10)
+    monkeypatch.setattr("custom_components.books.tolino_send.TOLINO_MAX_BYTES", 10)
     _mock_abs(aioclient_mock, content=b"x" * 500_000)
     resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
     assert resp.status == 413
