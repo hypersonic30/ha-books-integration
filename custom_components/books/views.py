@@ -423,7 +423,9 @@ class TolinoView(HomeAssistantView):
             return web.json_response({"error": f"Cannot reach Audiobookshelf: {exc}", "code": "abs_error"}, status=502)
 
         filename = _upload_filename(item, ebook_file, fmt)
-        form = aiohttp.FormData()
+        # quote_fields=False: aiohttp would percent-encode the filename (Dämmerung -> D%C3%A4mmerung)
+        # and aiohttp servers don't decode it. Quotes/backslashes/control chars are already stripped.
+        form = aiohttp.FormData(quote_fields=False)
         form.add_field("file", content, filename=filename, content_type=_CONTENT_TYPES[fmt])
         try:
             result = await bridge.request("POST", "/upload", data=form, timeout=TOLINO_UPLOAD_TIMEOUT)

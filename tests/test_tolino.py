@@ -191,3 +191,46 @@ async def test_send_abs_error(hass, tolino_entry, hass_client, aioclient_mock):
     aioclient_mock.get(f"{ABS}/api/items/abc123", status=404, json={"error": "nf"}, headers=JSON)
     resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
     assert resp.status == 502 and (await resp.json())["code"] == "abs_error"
+
+
+async def test_send_keeps_umlauts_in_multipart_filename(hass, hass_client, socket_enabled):
+    """aiohttp percent-encodes multipart filenames by default and aiohttp servers (the bridge) don't decode
+    them, so 'Dämmerung' would arrive as 'D%C3%A4mmerung'. Real sockets: this is about the wire format."""
+    import socket
+    from aiohttp import web
+
+    seen = {}
+
+    async def item(request):
+        return web.json_response(ITEM)
+
+    async def ebook(request):
+        return web.Response(body=b"PK-bytes")
+
+    async def upload(request):
+        part = await (await request.multipart()).next()
+        seen["name"], seen["bytes"] = part.filename, await part.read()
+        return web.json_response({"deliverableId": "d1"})
+
+    app = web.Application()
+    app.add_routes([web.get("/api/items/abc123", item), web.get("/api/items/abc123/ebook", ebook),
+                    web.post("/upload", upload), web.get("/status", item)])
+    runner = web.AppRunner(app)
+    await runner.setup()
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    await web.TCPSite(runner, "127.0.0.1", port).start()
+    base = f"http://127.0.0.1:{port}"
+    try:
+        entry = MockConfigEntry(domain=DOMAIN, title="Books", data={
+            **ENTRY_DATA, "abs_url": base, "tolino_url": base, "tolino_token": "t"})
+        entry.add_to_hass(hass)
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+        assert resp.status == 200, await resp.text()
+    finally:
+        await runner.cleanup()
+    assert seen == {"name": "Dämmerung.epub", "bytes": b"PK-bytes"}
