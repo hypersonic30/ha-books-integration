@@ -307,7 +307,20 @@ class AddBookView(HomeAssistantView):
             except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
                 _LOGGER.warning("books: adding %s '%s' failed: %s", media_type, book.get("title"), exc)
                 results.append({"media_type": media_type, "ok": False, "error": str(exc)})
+
+        # Chaptarr accepts addOptions.searchForNewBook on POST /book but does
+        # not act on it (verified against 0.9.x: only DownloadAuthorMedia runs),
+        # so search explicitly for exactly the books that were just added.
+        added_ids = [r["id"] for r in results if r["ok"] and r.get("id")]
+        search_started = False
+        if data.get("search", True) and added_ids:
+            try:
+                await client.post("/command", {"name": "BookSearch", "bookIds": added_ids})
+                search_started = True
+            except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
+                _LOGGER.warning("books: search for %s could not be started: %s", added_ids, exc)
         status = 200 if all(r["ok"] for r in results) else 207
+        return web.json_response({"results": results, "search_started": search_started}, status=status)
         return web.json_response({"results": results}, status=status)
 
 

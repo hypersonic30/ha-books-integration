@@ -104,13 +104,19 @@ def test_payload_monitors_only_this_book_for_ebook():
 async def test_add_book_both_media_types(hass, setup_entry, hass_client, aioclient_mock):
     aioclient_mock.get(f"{CHAPTARR}/api/v1/rootfolder", json=ROOTFOLDERS)
     aioclient_mock.post(f"{CHAPTARR}/api/v1/book", json={"id": 200, "title": "Die Chroniken von Alsea"})
+    aioclient_mock.post(f"{CHAPTARR}/api/v1/command", json={"id": 9})
     client = await hass_client()
     resp = await client.post("/api/books/add", json={"book": SEARCH_BOOK, "media_types": ["ebook", "audiobook"]})
     assert resp.status == 200
-    results = (await resp.json())["results"]
+    body = await resp.json()
+    results = body["results"]
     assert [r["media_type"] for r in results] == ["audiobook", "ebook"]
-    posted = [c[2] for c in aioclient_mock.mock_calls if c[0] == "POST"]
+    posted = [c[2] for c in aioclient_mock.mock_calls if c[0] == "POST" and str(c[1]).endswith("/book")]
     assert [b["mediaType"] for b in posted] == ["audiobook", "ebook"]
+    # Chaptarr ignores searchForNewBook, so the integration searches explicitly.
+    commands = [c[2] for c in aioclient_mock.mock_calls if c[0] == "POST" and str(c[1]).endswith("/command")]
+    assert commands == [{"name": "BookSearch", "bookIds": [200, 200]}]
+    assert body["search_started"] is True
     for body in posted:
         prefix = body["mediaType"]
         assert body["author"][f"{prefix}MonitorNewItems"] == "none"
@@ -121,3 +127,13 @@ async def test_add_book_rejects_bad_input(hass, setup_entry, hass_client):
     client = await hass_client()
     resp = await client.post("/api/books/add", json={"book": SEARCH_BOOK, "media_types": ["comic"]})
     assert resp.status == 400
+
+
+async def test_add_book_without_search(hass, setup_entry, hass_client, aioclient_mock):
+    aioclient_mock.get(f"{CHAPTARR}/api/v1/rootfolder", json=ROOTFOLDERS)
+    aioclient_mock.post(f"{CHAPTARR}/api/v1/book", json={"id": 201})
+    client = await hass_client()
+    resp = await client.post("/api/books/add", json={"book": SEARCH_BOOK, "media_types": ["ebook"], "search": False})
+    assert resp.status == 200 and (await resp.json())["search_started"] is False
+    assert not [c for c in aioclient_mock.mock_calls if str(c[1]).endswith("/command")]
+
