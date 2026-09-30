@@ -1,0 +1,193 @@
+"""Send-to-Tolino: HA fetches the ebook from Audiobookshelf and hands it to the tolino-bridge."""
+import pytest
+from homeassistant import config_entries
+from homeassistant.data_entry_flow import FlowResultType
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.books.const import DOMAIN
+
+from .conftest import ABS, CHAPTARR, ENTRY_DATA
+
+BRIDGE = "http://bridge.test:8199"
+ITEM = {"media": {"metadata": {"title": "Das Reich der Dämmerung"},
+                  "ebookFile": {"ebookFormat": "epub", "metadata": {"filename": "Dämmerung.epub"}}}}
+JSON = {"Content-Type": "application/json"}
+
+
+@pytest.fixture
+async def tolino_entry(hass):
+    entry = MockConfigEntry(domain=DOMAIN, title="Books",
+                            data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bridge-token"})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+def _mock_abs(aioclient_mock, item=ITEM, content=b"PK-epub-bytes"):
+    aioclient_mock.get(f"{ABS}/api/items/abc123", json=item, headers=JSON)
+    aioclient_mock.get(f"{ABS}/api/items/abc123/ebook", content=content)
+
+
+async def test_status_disabled_without_bridge(hass, setup_entry, hass_client):
+    resp = await (await hass_client()).get("/api/books/tolino")
+    assert await resp.json() == {"enabled": False}
+
+
+async def test_status_reports_bridge_state(hass, tolino_entry, hass_client, aioclient_mock):
+    aioclient_mock.get(f"{BRIDGE}/status", json={"logged_in": True, "last_error": None, "login_backoff_s": 0},
+                       headers=JSON)
+    body = await (await (await hass_client()).get("/api/books/tolino")).json()
+    assert body["enabled"] and body["reachable"] and body["logged_in"]
+    assert aioclient_mock.mock_calls[-1][3]["Authorization"] == "Bearer bridge-token"
+
+
+async def test_status_bridge_down(hass, tolino_entry, hass_client, aioclient_mock):
+    import aiohttp
+    aioclient_mock.get(f"{BRIDGE}/status", exc=aiohttp.ClientConnectionError("boom"))
+    body = await (await (await hass_client()).get("/api/books/tolino")).json()
+    assert body["enabled"] and not body["reachable"] and body["error"] == "unreachable"
+
+
+async def test_send_ok(hass, tolino_entry, hass_client, aioclient_mock):
+    _mock_abs(aioclient_mock)
+    aioclient_mock.post(f"{BRIDGE}/upload", json={"deliverableId": "bosh_1", "title": "T"}, headers=JSON)
+    resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+    assert resp.status == 200
+    assert await resp.json() == {"ok": True, "filename": "Dämmerung.epub", "deliverableId": "bosh_1"}
+    calls = {str(c[1]): c for c in aioclient_mock.mock_calls}
+    assert calls[f"{ABS}/api/items/abc123/ebook"][3]["Authorization"] == "Bearer abs-token"
+    upload = calls[f"{BRIDGE}/upload"]
+    assert upload[3]["Authorization"] == "Bearer bridge-token"
+    assert upload[2] is not None  # multipart form body
+
+
+async def test_send_rejects_non_epub_pdf(hass, tolino_entry, hass_client, aioclient_mock):
+    item = {"media": {"ebookFile": {"ebookFormat": "mobi"}}}
+    _mock_abs(aioclient_mock, item)
+    resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+    assert resp.status == 415 and (await resp.json())["code"] == "bad_type"
+    assert not any("upload" in str(c[1]) for c in aioclient_mock.mock_calls)
+
+
+async def test_send_item_without_ebook(hass, tolino_entry, hass_client, aioclient_mock):
+    _mock_abs(aioclient_mock, {"media": {"metadata": {"title": "Hörbuch"}}})
+    resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+    assert resp.status == 422 and (await resp.json())["code"] == "no_ebook"
+
+
+@pytest.mark.parametrize("bad", ["../../etc", "a/b", "", None, 5, "x" * 65])
+async def test_send_rejects_bad_item_id(hass, tolino_entry, hass_client, aioclient_mock, bad):
+    resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": bad})
+    assert resp.status == 400
+    assert aioclient_mock.call_count == 0  # nothing reached Audiobookshelf
+
+
+async def test_send_not_configured(hass, setup_entry, hass_client):
+    resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+    assert resp.status == 503 and (await resp.json())["code"] == "not_configured"
+
+
+@pytest.mark.parametrize("bridge_status,body,http,code", [
+    (503, {"error": "captcha", "detail": "blocked"}, 503, "captcha"),
+    (503, {"error": "login_backoff", "detail": "wait"}, 503, "login_backoff"),
+    (401, {"error": "unauthorized"}, 502, "bridge_auth"),
+    (502, {"error": "bosh", "detail": "x"}, 502, "bosh"),
+])
+async def test_send_maps_bridge_errors(hass, tolino_entry, hass_client, aioclient_mock,
+                                       bridge_status, body, http, code):
+    _mock_abs(aioclient_mock)
+    aioclient_mock.post(f"{BRIDGE}/upload", status=bridge_status, json=body, headers=JSON)
+    resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+    assert resp.status == http
+    assert (await resp.json())["code"] == code
+
+
+async def test_send_bridge_unreachable(hass, tolino_entry, hass_client, aioclient_mock):
+    import aiohttp
+    _mock_abs(aioclient_mock)
+    aioclient_mock.post(f"{BRIDGE}/upload", exc=aiohttp.ClientConnectionError("down"))
+    resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+    assert resp.status == 503 and (await resp.json())["code"] == "unreachable"
+
+
+async def test_send_unsafe_filename_is_sanitized(hass, tolino_entry, hass_client, aioclient_mock):
+    item = {"media": {"metadata": {"title": 'A/B: "C"'}, "ebookFile": {"ebookFormat": "epub", "metadata": {}}}}
+    _mock_abs(aioclient_mock, item)
+    aioclient_mock.post(f"{BRIDGE}/upload", json={"deliverableId": "x"}, headers=JSON)
+    body = await (await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})).json()
+    assert body["filename"] == "A_B_ _C_.epub"
+
+
+async def test_send_requires_login(hass, tolino_entry, hass_client_no_auth):
+    resp = await (await hass_client_no_auth()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+    assert resp.status == 401
+
+
+# --- config flow --------------------------------------------------------------
+
+def _flow_ok(aioclient_mock):
+    aioclient_mock.get(f"{CHAPTARR}/api/v1/system/status", json={"appName": "Chaptarr"})
+    aioclient_mock.get(f"{ABS}/api/me", json={})
+
+
+async def _run(hass, extra):
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    return await hass.config_entries.flow.async_configure(result["flow_id"], {**ENTRY_DATA, **extra})
+
+
+async def test_flow_without_bridge_still_works(hass, aioclient_mock):
+    _flow_ok(aioclient_mock)
+    result = await _run(hass, {})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"]["tolino_url"] == ""
+
+
+async def test_flow_with_bridge(hass, aioclient_mock):
+    _flow_ok(aioclient_mock)
+    aioclient_mock.get(f"{BRIDGE}/status", json={"logged_in": False, "last_error": "captcha"}, headers=JSON)
+    result = await _run(hass, {"tolino_url": BRIDGE + "/", "tolino_token": " bridge-token "})
+    assert result["type"] is FlowResultType.CREATE_ENTRY  # logged out at Thalia is not a config error
+    assert result["data"]["tolino_url"] == BRIDGE and result["data"]["tolino_token"] == "bridge-token"
+
+
+@pytest.mark.parametrize("extra,status,errors", [
+    ({"tolino_url": BRIDGE, "tolino_token": "bad"}, 401, {"tolino_token": "tolino_invalid_auth"}),
+    ({"tolino_url": BRIDGE, "tolino_token": "x"}, 500, {"tolino_url": "tolino_cannot_connect"}),
+    ({"tolino_url": BRIDGE, "tolino_token": ""}, 200, {"tolino_token": "tolino_token_missing"}),
+    ({"tolino_url": "", "tolino_token": "x"}, 200, {"tolino_url": "tolino_url_missing"}),
+    ({"tolino_url": "bridge.test", "tolino_token": "x"}, 200, {"tolino_url": "invalid_url"}),
+])
+async def test_flow_bridge_errors(hass, aioclient_mock, extra, status, errors):
+    _flow_ok(aioclient_mock)
+    aioclient_mock.get(f"{BRIDGE}/status", status=status, json={"logged_in": True}, headers=JSON)
+    result = await _run(hass, extra)
+    assert result["type"] is FlowResultType.FORM and result["errors"] == errors
+
+
+async def test_flow_rejects_non_bridge(hass, aioclient_mock):
+    _flow_ok(aioclient_mock)
+    aioclient_mock.get(f"{BRIDGE}/status", json={"something": "else"}, headers=JSON)
+    result = await _run(hass, {"tolino_url": BRIDGE, "tolino_token": "x"})
+    assert result["errors"] == {"tolino_url": "not_tolino_bridge"}
+
+
+async def test_send_too_large_declared(hass, tolino_entry, hass_client, aioclient_mock):
+    aioclient_mock.get(f"{ABS}/api/items/abc123", json=ITEM, headers=JSON)
+    aioclient_mock.get(f"{ABS}/api/items/abc123/ebook", content=b"x", headers={"Content-Length": str(101 * 1024 * 1024)})
+    resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+    assert resp.status == 413 and (await resp.json())["code"] == "too_large"
+
+
+async def test_send_too_large_streamed(hass, tolino_entry, hass_client, aioclient_mock, monkeypatch):
+    monkeypatch.setattr("custom_components.books.views.TOLINO_MAX_BYTES", 10)
+    _mock_abs(aioclient_mock, content=b"x" * 500_000)
+    resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+    assert resp.status == 413
+    assert not any("upload" in str(c[1]) for c in aioclient_mock.mock_calls)
+
+
+async def test_send_abs_error(hass, tolino_entry, hass_client, aioclient_mock):
+    aioclient_mock.get(f"{ABS}/api/items/abc123", status=404, json={"error": "nf"}, headers=JSON)
+    resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+    assert resp.status == 502 and (await resp.json())["code"] == "abs_error"

@@ -51,6 +51,11 @@ uses your normal Home Assistant session. The integration creates **no entities**
 
 ### Manual
 Copy `custom_components/books/` into `config/custom_components/` and restart Home Assistant.
+- **Send to Tolino** — `POST /api/books/tolino` uploads an Audiobookshelf ebook (EPUB/PDF) to the
+  Tolino Cloud through the optional [tolino-bridge](https://github.com/hypersonic30/tolino-bridge)
+  service; the book then shows up in the tolino app on iOS and Android after a sync. Home Assistant
+  fetches the file from Audiobookshelf itself, so neither the file nor the bridge token passes
+  through the browser.
 
 ## Setup
 
@@ -62,6 +67,7 @@ Settings → Devices & Services → Add Integration → **Books**:
 | Chaptarr API key | Chaptarr → Settings → General → API Key |
 | Audiobookshelf URL | e.g. `http://192.168.1.10:13378` |
 | Audiobookshelf API token | token of a **dedicated, restricted** Audiobookshelf user (Settings → Users → create a user without upload/delete/update rights) — not the admin |
+| Tolino bridge URL / token | optional: address of your tolino-bridge (e.g. `http://192.168.1.10:8199`) and its token (`deploy.sh token`). Leave empty to disable "send to Tolino" |
 | Verify SSL | disable only for self-signed certificates |
 | Automatically repair blocked imports | see above (default on) |
 | Notification target | optional: a notify entity (e.g. `notify.iphone`, as used by `notify.send_message`) or a legacy notify service (e.g. `notify.mobile_app_iphone`); several separated by commas — told when a repair fails |
@@ -83,6 +89,8 @@ Change anything later with the integration's **Reconfigure** action; it applies 
 | `/api/books/chaptarr-media/{MediaCover…}` | Chaptarr cached covers |
 | `/api/books/abs/{path}` | Audiobookshelf `/api/{path}` (streamed) |
 | `POST /api/books/add` | adds a search result as ebook/audiobook, "only this book" |
+| `GET /api/books/tolino` | tolino-bridge status (`enabled`, `reachable`, `logged_in`, `error`) |
+| `POST /api/books/tolino` `{abs_item_id}` | sends that item's EPUB/PDF to the Tolino Cloud (errors carry a `code`: `bad_type`, `no_ebook`, `too_large`, `captcha`, `login_backoff`, `unreachable`, …) |
 | `GET /api/books/rescue` | recent import-repair events |
 
 All endpoints require a Home Assistant login.

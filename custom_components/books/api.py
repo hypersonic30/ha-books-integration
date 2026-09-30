@@ -14,6 +14,8 @@ from .const import (
     CONF_ABS_URL,
     CONF_CHAPTARR_API_KEY,
     CONF_CHAPTARR_URL,
+    CONF_TOLINO_TOKEN,
+    CONF_TOLINO_URL,
     CONF_VERIFY_SSL,
     DOMAIN,
     REQUEST_TIMEOUT,
@@ -51,6 +53,7 @@ class _Client:
         path: str,
         *,
         json: Any = None,
+        data: Any = None,
         params: dict | None = None,
         timeout: float = REQUEST_TIMEOUT,
     ) -> Any:
@@ -59,6 +62,7 @@ class _Client:
             f"{self.base_url}{path}",
             headers=self.headers,
             json=json,
+            data=data,
             params=params,
             timeout=aiohttp.ClientTimeout(total=timeout),
         ) as resp:
@@ -74,6 +78,23 @@ class _Client:
                 except ValueError:
                     pass
             return text
+
+    async def fetch_bytes(self, path: str, *, max_bytes: int, timeout: float) -> bytes:
+        """GET a binary body, refusing anything larger than `max_bytes`."""
+        async with self.session.get(
+            f"{self.base_url}{path}", headers=self.headers, timeout=aiohttp.ClientTimeout(total=timeout),
+        ) as resp:
+            if resp.status >= 400:
+                raise UpstreamError(resp.status, (await resp.read())[:500].decode(errors="replace"))
+            declared = resp.headers.get("Content-Length", "")
+            if declared.isdigit() and int(declared) > max_bytes:
+                raise UpstreamError(413, "file too large")
+            body = bytearray()
+            async for chunk in resp.content.iter_chunked(256 * 1024):
+                body += chunk
+                if len(body) > max_bytes:
+                    raise UpstreamError(413, "file too large")
+            return bytes(body)
 
     async def get(self, path: str, **kwargs: Any) -> Any:
         return await self.request("GET", path, **kwargs)
@@ -104,3 +125,19 @@ class AbsClient(_Client):
             {"Authorization": f"Bearer {cfg.get(CONF_ABS_TOKEN, '')}"},
             cfg.get(CONF_VERIFY_SSL, True),
         )
+
+
+class TolinoBridgeClient(_Client):
+    """tolino-bridge (Tolino Cloud upload service) with bearer-token auth."""
+
+    def __init__(self, hass: HomeAssistant, cfg: dict) -> None:
+        super().__init__(
+            hass,
+            (cfg.get(CONF_TOLINO_URL) or "").rstrip("/"),
+            {"Authorization": f"Bearer {cfg.get(CONF_TOLINO_TOKEN, '')}"},
+            cfg.get(CONF_VERIFY_SSL, True),
+        )
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.base_url) and self.headers["Authorization"] != "Bearer "

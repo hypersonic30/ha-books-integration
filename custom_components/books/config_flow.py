@@ -24,6 +24,8 @@ from .const import (
     CONF_DEBUG_LOGGING,
     CONF_NOTIFY_SERVICE,
     CONF_RESCUE_IMPORTS,
+    CONF_TOLINO_TOKEN,
+    CONF_TOLINO_URL,
     CONF_VERIFY_SSL,
     DEFAULT_DEBUG_LOGGING,
     DEFAULT_RESCUE_IMPORTS,
@@ -44,6 +46,8 @@ def _schema(defaults: dict) -> vol.Schema:
         vol.Required(CONF_CHAPTARR_API_KEY, default=defaults.get(CONF_CHAPTARR_API_KEY, "")): _PASSWORD,
         vol.Required(CONF_ABS_URL, default=defaults.get(CONF_ABS_URL, "")): _URL,
         vol.Required(CONF_ABS_TOKEN, default=defaults.get(CONF_ABS_TOKEN, "")): _PASSWORD,
+        vol.Optional(CONF_TOLINO_URL, description={"suggested_value": defaults.get(CONF_TOLINO_URL, "")}): _URL,
+        vol.Optional(CONF_TOLINO_TOKEN, description={"suggested_value": defaults.get(CONF_TOLINO_TOKEN, "")}): _PASSWORD,
         vol.Required(CONF_VERIFY_SSL, default=defaults.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)): bool,
         vol.Required(
             CONF_RESCUE_IMPORTS, default=defaults.get(CONF_RESCUE_IMPORTS, DEFAULT_RESCUE_IMPORTS)
@@ -113,6 +117,25 @@ async def _check_abs(hass: HomeAssistant, url: str, token: str, verify_ssl: bool
     return None
 
 
+async def _check_tolino(hass: HomeAssistant, url: str, token: str, verify_ssl: bool) -> str | None:
+    """The bridge must answer and accept the token; being logged out at Thalia is not a config error."""
+    session = async_get_clientsession(hass, verify_ssl=verify_ssl)
+    try:
+        async with session.get(
+            f"{url}/status",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
+        ) as resp:
+            if resp.status == 401:
+                return "tolino_invalid_auth"
+            if resp.status != 200:
+                return "tolino_cannot_connect"
+            status = await resp.json(content_type=None)
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        return _error_key("tolino", url, err)
+    return None if isinstance(status, dict) and "logged_in" in status else "not_tolino_bridge"
+
+
 async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, str]]:
     data = {**data}
     errors: dict[str, str] = {}
@@ -121,6 +144,14 @@ async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, st
         if not data[key].startswith(("http://", "https://")):
             errors[key] = "invalid_url"
     data[CONF_NOTIFY_SERVICE] = (data.get(CONF_NOTIFY_SERVICE) or "").strip()
+    data[CONF_TOLINO_URL] = (data.get(CONF_TOLINO_URL) or "").strip().rstrip("/")
+    data[CONF_TOLINO_TOKEN] = (data.get(CONF_TOLINO_TOKEN) or "").strip()
+    if data[CONF_TOLINO_URL] and not data[CONF_TOLINO_URL].startswith(("http://", "https://")):
+        errors[CONF_TOLINO_URL] = "invalid_url"
+    elif data[CONF_TOLINO_URL] and not data[CONF_TOLINO_TOKEN]:
+        errors[CONF_TOLINO_TOKEN] = "tolino_token_missing"
+    elif data[CONF_TOLINO_TOKEN] and not data[CONF_TOLINO_URL]:
+        errors[CONF_TOLINO_URL] = "tolino_url_missing"
     if errors:
         return data, errors
     verify = data[CONF_VERIFY_SSL]
@@ -128,6 +159,9 @@ async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, st
         errors[CONF_CHAPTARR_API_KEY if "auth" in err else CONF_CHAPTARR_URL] = err
     if err := await _check_abs(hass, data[CONF_ABS_URL], data[CONF_ABS_TOKEN].strip(), verify):
         errors[CONF_ABS_TOKEN if "auth" in err else CONF_ABS_URL] = err
+    if data[CONF_TOLINO_URL]:
+        if err := await _check_tolino(hass, data[CONF_TOLINO_URL], data[CONF_TOLINO_TOKEN], verify):
+            errors[CONF_TOLINO_TOKEN if "auth" in err else CONF_TOLINO_URL] = err
     return data, errors
 
 

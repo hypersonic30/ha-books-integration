@@ -6,6 +6,8 @@ CONF_CHAPTARR_URL = "chaptarr_url"
 CONF_CHAPTARR_API_KEY = "chaptarr_api_key"
 CONF_ABS_URL = "abs_url"
 CONF_ABS_TOKEN = "abs_token"
+CONF_TOLINO_URL = "tolino_url"
+CONF_TOLINO_TOKEN = "tolino_token"
 CONF_VERIFY_SSL = "verify_ssl"
 CONF_RESCUE_IMPORTS = "rescue_imports"
 CONF_NOTIFY_SERVICE = "notify_service"
@@ -18,6 +20,11 @@ DEFAULT_DEBUG_LOGGING = False
 REQUEST_TIMEOUT = 10
 # Chaptarr's /release and /search endpoints query every indexer synchronously.
 SLOW_REQUEST_TIMEOUT = 120
+
+# Tolino Cloud only accepts these; larger files are refused by the bridge anyway.
+TOLINO_FORMATS = frozenset({"epub", "pdf"})
+TOLINO_MAX_BYTES = 100 * 1024 * 1024
+TOLINO_UPLOAD_TIMEOUT = 180
 
 RESCUE_INTERVAL_SECONDS = 120
 
