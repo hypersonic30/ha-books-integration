@@ -82,11 +82,23 @@
       "tolino_invalid_auth": "Die Tolino-Bridge hat den Token abgelehnt",
       "tolino_token_missing": "Bitte auch den Bridge-Token eintragen",
       "tolino_url_missing": "Bitte auch die Bridge-URL eintragen",
-      "not_tolino_bridge": "Unter dieser URL läuft keine tolino-bridge"
+      "not_tolino_bridge": "Unter dieser URL läuft keine tolino-bridge",
+      "tolino_bridge_required": "Trage zuerst oben die tolino-Bridge-URL und den Token ein; diese Option braucht die Bridge",
+      "sync_progress_required": "Braucht die Option „Lesefortschritt von tolino übernehmen“ (bitte auch einschalten)"
     },
     "abort": {
       "reconfigure_successful": "Verbindung aktualisiert",
       "single_instance_allowed": "Es wird nur eine Books-Integration unterstützt"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "progress_sync": {
+        "name": "Letzter Fortschritts-Abgleich"
+      },
+      "auto_send": {
+        "name": "Zuletzt automatisch gesendet"
+      }
     }
   }
 }

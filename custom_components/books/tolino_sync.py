@@ -22,6 +22,8 @@ from xml.etree import ElementTree as ET
 import aiohttp
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.util import dt as dt_util
 
 from .api import AbsClient, TolinoBridgeClient, UpstreamError, get_config
 from .const import (
@@ -30,6 +32,8 @@ from .const import (
     DEFAULT_SYNC_PROGRESS,
     DEFAULT_SYNC_PROGRESS_WRITE,
     DOMAIN,
+    EVENT_PROGRESS_SYNCED,
+    SIGNAL_SYNC_UPDATED,
     TOLINO_MAX_BYTES,
     TOLINO_UPLOAD_TIMEOUT,
 )
@@ -44,6 +48,7 @@ _SYNC_ERRORS = (UpstreamError, aiohttp.ClientError, TimeoutError, zipfile.BadZip
 class ProgressSync:
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
+        self.last_run: dict | None = None
 
     @property
     def enabled(self) -> bool:
@@ -101,14 +106,20 @@ class ProgressSync:
                 if action == "import":
                     await self._import(abs_client, registry, item_id, sent, state, tolino_t, tolino_f)
                     summary["imported"].append(item_id)
+                    self._hass.bus.async_fire(EVENT_PROGRESS_SYNCED, {"item_id": item_id, "direction": "tolino_to_abs", "finished": tolino_f})
                 elif action == "export":
                     wrote = await self._export(bridge, abs_client, registry, item_id, sent, state, current, abs_t)
                     summary["exported" if wrote else "skipped"].append(item_id)
+                    if wrote:
+                        self._hass.bus.async_fire(EVENT_PROGRESS_SYNCED, {"item_id": item_id, "direction": "abs_to_tolino",
+                                                                           "finished": bool(current.get("isFinished"))})
                 else:
                     await registry.async_update(item_id, progress_modified=tolino_t, progress_finished=tolino_f)
                     summary["skipped"].append(item_id)
             except _SYNC_ERRORS as exc:
                 _LOGGER.warning("books: progress sync for %s failed: %s", item_id, exc)
+        self.last_run = {"at": dt_util.utcnow(), **{k: len(v) if isinstance(v, list) else v for k, v in summary.items()}}
+        async_dispatcher_send(self._hass, SIGNAL_SYNC_UPDATED)
         return summary
 
     # -- helpers ------------------------------------------------------------------------------------------------

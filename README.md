@@ -60,6 +60,18 @@ Copy `custom_components/books/` into `config/custom_components/` and restart Hom
   bridge is unreachable or not logged in at Thalia; after two bad polls (10 min) you get a persistent
   notification and, if configured, a push — and one all-clear when it recovers.
 
+### Sensors and events (with a tolino bridge)
+
+| Entity / event | What it tells you |
+|---|---|
+| `binary_sensor` *tolino-Bridge Problem* | on when the bridge is unreachable or not logged in at Thalia |
+| `sensor` *Last progress sync* | timestamp of the last reading-progress run; attributes `imported`, `exported`, `skipped` (that run), `enabled`, `write_enabled` |
+| `sensor` *Last auto-sent book* | title of the book auto-sent last (survives restarts); attributes `sent_at`, `total_sent`, `given_up`, `enabled` |
+| event `books_tolino_sent` | a book reached the tolino Cloud: `item_id`, `title`, `filename`, `deliverable_id`, `replaced`, `auto` (true = auto-send, false = the card's button) |
+| event `books_tolino_progress_synced` | a reading state was carried over: `item_id`, `direction` (`tolino_to_abs` / `abs_to_tolino`), `finished` |
+
+Use the events for automations, e.g. a push "New book is on your tolino – sync the app" when `books_tolino_sent` fires with `auto: true`.
+
 ## Setup
 
 Settings → Devices & Services → Add Integration → **Books**:

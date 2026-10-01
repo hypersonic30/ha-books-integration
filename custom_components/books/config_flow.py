@@ -163,6 +163,13 @@ async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, st
         errors[CONF_TOLINO_TOKEN] = "tolino_token_missing"
     elif data[CONF_TOLINO_TOKEN] and not data[CONF_TOLINO_URL]:
         errors[CONF_TOLINO_URL] = "tolino_url_missing"
+    # The tolino features silently do nothing without their prerequisites - say so in the form instead.
+    wanted = [k for k in (CONF_AUTO_SEND, CONF_SYNC_PROGRESS, CONF_SYNC_PROGRESS_WRITE) if data.get(k)]
+    if wanted and not data[CONF_TOLINO_URL]:
+        for key in wanted:
+            errors.setdefault(key, "tolino_bridge_required")
+    if data.get(CONF_SYNC_PROGRESS_WRITE) and not data.get(CONF_SYNC_PROGRESS):
+        errors.setdefault(CONF_SYNC_PROGRESS_WRITE, "sync_progress_required")
     if errors:
         return data, errors
     verify = data[CONF_VERIFY_SSL]

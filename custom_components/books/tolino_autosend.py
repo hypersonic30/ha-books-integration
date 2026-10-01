@@ -18,10 +18,12 @@ import aiohttp
 
 from homeassistant.components import persistent_notification
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .api import AbsClient, TolinoBridgeClient, UpstreamError, get_config
-from .const import CONF_AUTO_SEND, DEFAULT_AUTO_SEND, DOMAIN, TOLINO_CONVERTIBLE, TOLINO_FORMATS
+from .const import CONF_AUTO_SEND, DEFAULT_AUTO_SEND, DOMAIN, SIGNAL_AUTOSEND_UPDATED, TOLINO_CONVERTIBLE, TOLINO_FORMATS
 from .notify_helper import async_push
 from .tolino_send import SendError, async_send_to_tolino
 
@@ -43,6 +45,7 @@ class AutoSender:
         self._hass = hass
         self._store: Store = Store(hass, 1, STORAGE_KEY)
         self.state: dict = {"active": False, "since": 0, "failed": {}}
+        self.last_run: dict | None = None
 
     @property
     def enabled(self) -> bool:
@@ -115,8 +118,11 @@ class AutoSender:
             summary["checked"] += 1
             title = ((item.get("media") or {}).get("metadata") or {}).get("title") or item_id
             try:
-                await async_send_to_tolino(self._hass, item_id)
+                await async_send_to_tolino(self._hass, item_id, auto=True)
                 summary["sent"].append(item_id)
+                self.state["last_sent"] = {"title": title, "at": dt_util.utcnow().isoformat(), "item_id": item_id}
+                self.state["total_sent"] = int(self.state.get("total_sent", 0)) + 1
+                await self._store.async_save(self.state)
                 _LOGGER.info("books: auto-sent '%s' to the Tolino Cloud", title)
             except SendError as exc:
                 if exc.code == "already_sent":
@@ -128,6 +134,8 @@ class AutoSender:
                 _LOGGER.warning("books: auto-send paused at '%s': %s (will retry)", title, exc)
                 if exc.code in BRIDGE_DOWN:
                     break                                      # the bridge/Thalia is the problem: stop, retry next run
+        self.last_run = {"at": dt_util.utcnow(), **{k: len(v) if isinstance(v, list) else v for k, v in summary.items()}}
+        async_dispatcher_send(self._hass, SIGNAL_AUTOSEND_UPDATED)
         return summary
 
     async def _report(self, item_id: str, title: str, exc: SendError) -> None:

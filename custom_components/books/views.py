@@ -322,7 +322,6 @@ class AddBookView(HomeAssistantView):
                 _LOGGER.warning("books: search for %s could not be started: %s", added_ids, exc)
         status = 200 if all(r["ok"] for r in results) else 207
         return web.json_response({"results": results, "search_started": search_started}, status=status)
-        return web.json_response({"results": results}, status=status)
 
 
 class TolinoView(HomeAssistantView):

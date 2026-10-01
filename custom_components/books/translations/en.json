@@ -82,11 +82,23 @@
       "tolino_invalid_auth": "The Tolino bridge rejected the token",
       "tolino_token_missing": "Enter the bridge token as well",
       "tolino_url_missing": "Enter the bridge URL as well",
-      "not_tolino_bridge": "That URL is not a tolino-bridge"
+      "not_tolino_bridge": "That URL is not a tolino-bridge",
+      "tolino_bridge_required": "Enter the tolino bridge URL and token above first; this option needs the bridge",
+      "sync_progress_required": "Needs the option \"Sync reading progress from tolino\" (switch that on too)"
     },
     "abort": {
       "reconfigure_successful": "Connection updated",
       "single_instance_allowed": "Only one Books integration is supported"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "progress_sync": {
+        "name": "Last progress sync"
+      },
+      "auto_send": {
+        "name": "Last auto-sent book"
+      }
     }
   }
 }

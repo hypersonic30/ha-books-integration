@@ -37,6 +37,12 @@ TOLINO_UPLOAD_TIMEOUT = 180
 TOLINO_BRIDGE_TIMEOUT = 660
 TOLINO_MAX_COVER_BYTES = 10 * 1024 * 1024
 
+SIGNAL_SYNC_UPDATED = "books_progress_sync_updated"
+SIGNAL_AUTOSEND_UPDATED = "books_autosend_updated"
+# Bus events for automations (payloads documented in the README)
+EVENT_TOLINO_SENT = "books_tolino_sent"
+EVENT_PROGRESS_SYNCED = "books_tolino_progress_synced"
+
 RESCUE_INTERVAL_SECONDS = 120
 SYNC_INTERVAL_SECONDS = 600
 AUTO_SEND_INTERVAL_SECONDS = 600

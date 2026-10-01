@@ -16,6 +16,7 @@ from homeassistant.core import HomeAssistant
 from .api import AbsClient, TolinoBridgeClient, UpstreamError, get_config
 from .const import (
     DOMAIN,
+    EVENT_TOLINO_SENT,
     TOLINO_BRIDGE_TIMEOUT,
     TOLINO_CONVERTIBLE,
     TOLINO_FORMATS,
@@ -73,7 +74,7 @@ async def _still_in_cloud(bridge: TolinoBridgeClient, deliverable_id: str) -> bo
     return any(b.get("deliverableId") == deliverable_id for b in (library or {}).get("books", []))
 
 
-async def async_send_to_tolino(hass: HomeAssistant, item_id: str, force: bool = False) -> dict:
+async def async_send_to_tolino(hass: HomeAssistant, item_id: str, force: bool = False, auto: bool = False) -> dict:
     """Upload the ebook of Audiobookshelf item `item_id`. Raises SendError; returns the result dict on success."""
     if not _ABS_ID.match(item_id):
         raise SendError("bad_request", "abs_item_id is required", 400)
@@ -152,5 +153,8 @@ async def async_send_to_tolino(hass: HomeAssistant, item_id: str, force: bool = 
         except (aiohttp.ClientError, TimeoutError) as exc:
             replaced = False
             _LOGGER.warning("books: could not remove the old Tolino copy of '%s': %s", filename, exc)
+    title = ((item or {}).get("media") or {}).get("metadata", {}).get("title")
+    hass.bus.async_fire(EVENT_TOLINO_SENT, {"item_id": item_id, "title": title, "filename": filename,
+                                            "deliverable_id": new_id, "replaced": bool(replaced), "auto": auto})
     return {"ok": True, "filename": filename, "deliverableId": new_id, "cover": (result or {}).get("cover"),
-            "replaced": replaced, "title": ((item or {}).get("media") or {}).get("metadata", {}).get("title")}
+            "replaced": replaced, "title": title}

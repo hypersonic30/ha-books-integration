@@ -77,3 +77,40 @@ async def test_reconfigure(hass, setup_entry, aioclient_mock):
     assert result["reason"] == "reconfigure_successful"
     assert setup_entry.data["rescue_imports"] is False
     assert hass.data[DOMAIN]["config"]["rescue_imports"] is False
+
+
+# --- options that need other options ------------------------------------------------------------
+
+async def _flow(hass, extra):
+    result = await _start(hass)
+    return await hass.config_entries.flow.async_configure(result["flow_id"], {**ENTRY_DATA, **extra})
+
+
+import pytest as _pytest
+
+
+@_pytest.mark.parametrize("option", ["auto_send", "sync_progress", "sync_progress_write"])
+async def test_tolino_options_need_the_bridge(hass, aioclient_mock, option):
+    _ok(aioclient_mock)
+    result = await _flow(hass, {option: True, "sync_progress": True})
+    assert result["type"] is FlowResultType.FORM and result["errors"].get(option) == "tolino_bridge_required"
+
+
+async def test_write_option_needs_the_import_option(hass, aioclient_mock):
+    _ok(aioclient_mock)
+    aioclient_mock.get("http://bridge.test:8199/status", json={"logged_in": True}, headers={"Content-Type": "application/json"})
+    result = await _flow(hass, {"tolino_url": "http://bridge.test:8199", "tolino_token": "t", "sync_progress_write": True})
+    assert result["type"] is FlowResultType.FORM and result["errors"] == {"sync_progress_write": "sync_progress_required"}
+
+
+async def test_all_tolino_options_together_are_accepted(hass, aioclient_mock):
+    _ok(aioclient_mock)
+    aioclient_mock.get("http://bridge.test:8199/status", json={"logged_in": True}, headers={"Content-Type": "application/json"})
+    result = await _flow(hass, {"tolino_url": "http://bridge.test:8199", "tolino_token": "t",
+                                "auto_send": True, "sync_progress": True, "sync_progress_write": True})
+    assert result["type"] is FlowResultType.CREATE_ENTRY and result["data"]["sync_progress_write"] is True
+
+
+async def test_options_off_without_a_bridge_stay_fine(hass, aioclient_mock):
+    _ok(aioclient_mock)
+    assert (await _flow(hass, {}))["type"] is FlowResultType.CREATE_ENTRY

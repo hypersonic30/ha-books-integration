@@ -33,7 +33,7 @@ from .views import (
     TolinoView,
 )
 
-PLATFORMS = [Platform.BINARY_SENSOR]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
 # Setting the level here also governs the submodules (they inherit it).
 _PKG_LOGGER = logging.getLogger(__package__)
