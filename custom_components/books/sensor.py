@@ -55,7 +55,8 @@ class ProgressSyncSensor(_JobSensor):
             return {"enabled": sync.enabled, "write_enabled": sync.write_enabled, "imported": run.get("imported"),
                     "exported": run.get("exported"), "skipped": run.get("skipped")}
         jobs = _jobs(self._hass)
-        return {**one(self._hass.data[DOMAIN]["progress_sync"]), "accounts": {a: one(j["progress_sync"]) for a, j in jobs.items()}}
+        first = next((j["progress_sync"] for j in jobs.values()), None)
+        return {**(one(first) if first else {}), "accounts": {a: one(j["progress_sync"]) for a, j in jobs.items()}}
 
 
 class AutoSendSensor(_JobSensor):
@@ -77,7 +78,8 @@ class AutoSendSensor(_JobSensor):
             return {"enabled": job.enabled, "sent_at": last.get("at"), "total_sent": job.state.get("total_sent", 0),
                     "given_up": len(job.state.get("failed") or {}), "since_ms": job.state.get("since")}
         jobs = _jobs(self._hass)
-        return {**one(self._hass.data[DOMAIN]["auto_send"]), "accounts": {a: one(j["auto_send"]) for a, j in jobs.items()}}
+        first = next((j["auto_send"] for j in jobs.values()), None)
+        return {**(one(first) if first else {}), "accounts": {a: one(j["auto_send"]) for a, j in jobs.items()}}
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:

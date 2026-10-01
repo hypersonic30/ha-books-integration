@@ -5,7 +5,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 
 from custom_components.books.const import DOMAIN
 
-from .conftest import ENTRY_DATA
+from .conftest import ENTRY_DATA, admin_person
 
 BRIDGE = "http://bridge.test:8199"
 SENSOR = "binary_sensor.tolino_bridge_problem"
@@ -18,7 +18,8 @@ async def _setup(hass, aioclient_mock, status, extra=None):
     """aioclient_mock must exist before setup: the watcher polls once in the background right away."""
     aioclient_mock.get(f"{BRIDGE}/status", json=status, headers=JSON)
     entry = MockConfigEntry(domain=DOMAIN, title="Books", data={
-        **ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bridge-token", **(extra or {})})
+        **ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bridge-token", **(extra or {})},
+        subentries_data=[await admin_person(hass, tolino=True)])
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -52,7 +53,7 @@ async def test_logged_out_bridge_is_a_problem(hass, aioclient_mock):
 async def test_unreachable_bridge_is_a_problem(hass, aioclient_mock):
     aioclient_mock.get(f"{BRIDGE}/status", exc=aiohttp.ClientConnectionError("refused"))
     entry = MockConfigEntry(domain=DOMAIN, title="Books", data={
-        **ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "t"})
+        **ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "t"}, subentries_data=[await admin_person(hass, tolino=True)])
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()

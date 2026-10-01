@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
@@ -45,6 +46,7 @@ from .views import (
 
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+ISSUE_NO_PERSON = "no_person"
 SERVICE_MOVE_TOLINO_ACCOUNT = "move_tolino_account"
 
 # Setting the level here also governs the submodules (they inherit it).
@@ -128,13 +130,23 @@ async def _refresh_users(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def _ensure_jobs(hass: HomeAssistant) -> None:
     data = hass.data[DOMAIN]
     jobs = data.setdefault("jobs", {})
-    for account in dict.fromkeys([DEFAULT_TOLINO_ACCOUNT, *tolino_accounts(hass)]):
+    for account in tolino_accounts(hass):
         await async_ensure_registry(hass, account)            # loads it from storage when it is not in memory (after a restart)
         if account not in jobs:
             jobs[account] = {"auto_send": AutoSender(hass, account), "progress_sync": ProgressSync(hass, account)}
-            if account == DEFAULT_TOLINO_ACCOUNT:
-                data["auto_send"], data["progress_sync"] = jobs[account]["auto_send"], jobs[account]["progress_sync"]
         await jobs[account]["auto_send"].async_start()
+    for gone in set(jobs) - set(tolino_accounts(hass)):             # nobody uses this account any more: stop it cleanly
+        await jobs[gone]["auto_send"].async_start()                 # (disabled now -> marks it inactive)
+    _check_people_issue(hass)
+
+
+def _check_people_issue(hass: HomeAssistant) -> None:
+    """A repair hint while nobody has been added: without a person the cards have no access."""
+    if hass.data[DOMAIN].get("users"):
+        ir.async_delete_issue(hass, DOMAIN, ISSUE_NO_PERSON)
+    else:
+        ir.async_create_issue(hass, DOMAIN, ISSUE_NO_PERSON, is_fixable=False, severity=ir.IssueSeverity.WARNING,
+                              translation_key=ISSUE_NO_PERSON)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

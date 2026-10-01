@@ -47,11 +47,8 @@ from .const import (
     CONF_TOLINO_TOKEN,
     CONF_TOLINO_URL,
     CONF_VERIFY_SSL,
-    DEFAULT_AUTO_SEND,
     DEFAULT_DEBUG_LOGGING,
     DEFAULT_RESCUE_IMPORTS,
-    DEFAULT_SYNC_PROGRESS,
-    DEFAULT_SYNC_PROGRESS_WRITE,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
     REQUEST_TIMEOUT,
@@ -75,11 +72,6 @@ def _schema(defaults: dict) -> vol.Schema:
         vol.Optional(CONF_MYLAR_API_KEY, description={"suggested_value": defaults.get(CONF_MYLAR_API_KEY, "")}): _PASSWORD,
         vol.Optional(CONF_TOLINO_URL, description={"suggested_value": defaults.get(CONF_TOLINO_URL, "")}): _URL,
         vol.Optional(CONF_TOLINO_TOKEN, description={"suggested_value": defaults.get(CONF_TOLINO_TOKEN, "")}): _PASSWORD,
-        vol.Required(CONF_AUTO_SEND, default=defaults.get(CONF_AUTO_SEND, DEFAULT_AUTO_SEND)): bool,
-        vol.Required(CONF_SYNC_PROGRESS, default=defaults.get(CONF_SYNC_PROGRESS, DEFAULT_SYNC_PROGRESS)): bool,
-        vol.Required(
-            CONF_SYNC_PROGRESS_WRITE, default=defaults.get(CONF_SYNC_PROGRESS_WRITE, DEFAULT_SYNC_PROGRESS_WRITE)
-        ): bool,
         vol.Required(CONF_VERIFY_SSL, default=defaults.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)): bool,
         vol.Required(
             CONF_RESCUE_IMPORTS, default=defaults.get(CONF_RESCUE_IMPORTS, DEFAULT_RESCUE_IMPORTS)
@@ -249,12 +241,6 @@ async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, st
     elif data[CONF_TOLINO_TOKEN] and not data[CONF_TOLINO_URL]:
         errors[CONF_TOLINO_URL] = "tolino_url_missing"
     # The tolino features silently do nothing without their prerequisites - say so in the form instead.
-    wanted = [k for k in (CONF_AUTO_SEND, CONF_SYNC_PROGRESS, CONF_SYNC_PROGRESS_WRITE) if data.get(k)]
-    if wanted and not data[CONF_TOLINO_URL]:
-        for key in wanted:
-            errors.setdefault(key, "tolino_bridge_required")
-    if data.get(CONF_SYNC_PROGRESS_WRITE) and not data.get(CONF_SYNC_PROGRESS):
-        errors.setdefault(CONF_SYNC_PROGRESS_WRITE, "sync_progress_required")
     if errors:
         return data, errors
     verify = data[CONF_VERIFY_SSL]

@@ -173,7 +173,7 @@ async def test_every_account_has_its_own_jobs_registry_and_settings(hass, family
     assert tolino_accounts(hass) == ["default", "cara"]
     jobs = hass.data[DOMAIN]["jobs"]
     assert set(jobs) == {"default", "cara"}
-    assert jobs["default"]["auto_send"] is hass.data[DOMAIN]["auto_send"]                    # the names the rest of the code knows
+    assert jobs["default"]["auto_send"] is hass.data[DOMAIN]["jobs"]["default"]["auto_send"]                    # the names the rest of the code knows
     assert not jobs["default"]["auto_send"].enabled and jobs["cara"]["auto_send"].enabled
     assert not jobs["default"]["progress_sync"].enabled and jobs["cara"]["progress_sync"].enabled
     assert tolino_config(hass, "default")["abs_token"] == "abs-anna" and tolino_config(hass, "cara")["abs_token"] == "abs-cara"
@@ -492,3 +492,84 @@ def test_the_action_has_its_texts_and_services_yaml():
     for f in ("strings.json", "translations/en.json", "translations/de.json"):
         svc = json.loads((base / f).read_text())["services"]["move_tolino_account"]
         assert svc["name"] and svc["description"] and all(svc["fields"][k]["name"] and svc["fields"][k]["description"] for k in ("to_account", "from_account")), f
+
+
+# --- who is told: the administrator always, plus the person whose account is affected ----------------------------------------------
+
+async def _watched_with_targets(hass, aioclient_mock, per_account=None, down=False, admin="notify.admin_phone", anna_target="notify.anna_phone",
+                                cara_target="notify.cara_phone"):
+    if down:
+        aioclient_mock.get(f"{BRIDGE}/status", exc=aiohttp.ClientConnectionError("refused"))
+    else:
+        bridge_status(aioclient_mock, per_account=per_account)
+    sent = {}
+    for name in {admin, anna_target, cara_target} - {""}:
+        sent[name] = async_mock_service(hass, "notify", name.split(".")[1])
+    users = {n: await hass.auth.async_create_user(n.title(), group_ids=["system-users"]) for n in ("anna", "cara")}
+    entry = MockConfigEntry(
+        domain=DOMAIN, title="Books", data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "t", "notify_service": admin},
+        subentries_data=[person(users["anna"], tolino=True, notify_service=anna_target),
+                         person(users["cara"], tolino=True, tolino_account="cara", notify_service=cara_target)])
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    for calls in sent.values():
+        calls.clear()
+    return entry, hass.data[DOMAIN]["tolino_watcher"], sent
+
+
+async def test_the_person_of_a_broken_account_is_told_too_and_the_administrator_as_always(hass, aioclient_mock):
+    entry, watcher, sent = await _watched_with_targets(hass, aioclient_mock, {"cara": BAD})
+    await watcher.async_refresh(); await hass.async_block_till_done()
+    admin, anna, cara = sent["notify.admin_phone"], sent["notify.anna_phone"], sent["notify.cara_phone"]
+    assert len(admin) == 1 and "captcha: blocked" in admin[0].data["message"] and "Konto „cara“" in admin[0].data["message"]
+    assert len(cara) == 1 and cara[0].data["message"].startswith("Dein tolino-Konto ist gerade nicht eingeloggt: captcha: blocked")
+    assert "Verwalter" in cara[0].data["message"] and cara[0].data["title"] == "tolino-Konto Problem"
+    assert anna == []                                                                          # Anna's account is fine
+
+
+async def test_everything_is_cleared_with_a_message_to_both(hass, aioclient_mock):
+    entry, watcher, sent = await _watched_with_targets(hass, aioclient_mock, {"cara": BAD})
+    await watcher.async_refresh(); await hass.async_block_till_done()
+    aioclient_mock.clear_requests(); bridge_status(aioclient_mock)
+    await watcher.async_refresh(); await hass.async_block_till_done()
+    assert [m.data["message"] for m in sent["notify.cara_phone"]][-1] == "Dein tolino-Konto läuft wieder."
+    assert "läuft für das Konto „cara“ wieder" in sent["notify.admin_phone"][-1].data["message"]
+
+
+async def test_a_person_who_is_also_the_administrator_is_told_once(hass, aioclient_mock):
+    entry, watcher, sent = await _watched_with_targets(hass, aioclient_mock, {"cara": BAD}, admin="notify.shared_phone", cara_target="notify.shared_phone")
+    await watcher.async_refresh(); await hass.async_block_till_done()
+    assert len(sent["notify.shared_phone"]) == 1                                               # the full text, not a second one
+
+
+async def test_a_person_without_a_notify_target_is_simply_not_told(hass, aioclient_mock):
+    entry, watcher, sent = await _watched_with_targets(hass, aioclient_mock, {"cara": BAD}, cara_target="")
+    await watcher.async_refresh(); await hass.async_block_till_done()
+    assert len(sent["notify.admin_phone"]) == 1
+
+
+async def test_a_dead_bridge_is_one_alert_not_one_per_account(hass, aioclient_mock):
+    entry, watcher, sent = await _watched_with_targets(hass, aioclient_mock, down=True)
+    await watcher.async_refresh(); await hass.async_block_till_done()
+    for name, calls in sent.items():
+        assert len(calls) == 1, (name, [c.data["message"] for c in calls])                    # administrator and each person: once
+    assert sent["notify.admin_phone"][0].data["title"] == "tolino-Bridge Problem" and "nicht erreichbar" in sent["notify.admin_phone"][0].data["message"]
+    assert "Bis sie wieder läuft" in sent["notify.cara_phone"][0].data["message"]
+    notes = _async_get_or_create_notifications(hass)
+    assert "books_tolino_bridge" in notes and "books_tolino_bridge_cara" not in notes         # a single persistent notification
+    assert hass.states.get("binary_sensor.tolino_bridge_problem").state == "on"
+
+
+async def test_while_the_bridge_is_down_accounts_are_not_blamed_and_afterwards_a_real_account_problem_is(hass, aioclient_mock):
+    entry, watcher, sent = await _watched_with_targets(hass, aioclient_mock, down=True)
+    await watcher.async_refresh(); await hass.async_block_till_done()
+    aioclient_mock.clear_requests(); bridge_status(aioclient_mock, per_account={"cara": BAD})        # the bridge is back, Cara's login is not
+    for calls in sent.values():
+        calls.clear()
+    await watcher.async_refresh(); await hass.async_block_till_done()
+    assert [c.data["message"] for c in sent["notify.cara_phone"]] == ["Die tolino-Bridge läuft wieder."]          # bridge incident closed
+    assert "books_tolino_bridge" not in _async_get_or_create_notifications(hass)
+    await watcher.async_refresh(); await hass.async_block_till_done()                                              # second bad poll for Cara
+    assert any("nicht eingeloggt" in c.data["message"] for c in sent["notify.cara_phone"])
+    assert "books_tolino_bridge_cara" in _async_get_or_create_notifications(hass)

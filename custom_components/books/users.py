@@ -1,6 +1,7 @@
-"""Per-person accounts. Every person gets a config subentry: a Home Assistant user plus their own Komga key, Audiobookshelf
-token, notify target and (optionally) the Tolino bridge. The proxies pick the account of whoever is asking, so reading
-progress and bookmarks are never shared; anybody without a subentry keeps using the shared account from the main settings."""
+"""People. Every Home Assistant user who uses the cards is a person (a config subentry): their own Komga key, Audiobookshelf
+token, notify target and (optionally) their own tolino account. The proxies pick the account of whoever is asking, so reading
+progress and bookmarks are never shared. Without a person there is no access; an empty key/token of a person falls back to
+the shared Komga key / Audiobookshelf token of the main settings."""
 from __future__ import annotations
 
 from homeassistant.components.http import KEY_HASS_USER
@@ -55,10 +56,22 @@ def config_for(hass: HomeAssistant, user_id: str | None) -> dict:
     return merged
 
 
+def person_of(hass: HomeAssistant, user_id: str | None) -> dict | None:
+    return get_users(hass).get(user_id or "")
+
+
+def access_denied(hass: HomeAssistant, user_id: str | None) -> bool:
+    """Everybody who uses the cards needs a person (their own accounts, their own progress). No person -> no access."""
+    return person_of(hass, user_id) is None
+
+
+NO_PERSON = {"error": "No person is set up for your Home Assistant user. Ask the administrator to add you "
+                      "(Settings > Devices & services > Books > Add person).", "code": "no_person"}
+
+
 def tolino_allowed(hass: HomeAssistant, user_id: str | None) -> bool:
-    """Without any person configured everybody keeps the old behaviour; otherwise only people marked as Tolino users."""
-    users = get_users(hass)
-    return True if not users else bool(users.get(user_id or "", {}).get(CONF_USER_TOLINO))
+    """Only people marked as Tolino users."""
+    return bool((person_of(hass, user_id) or {}).get(CONF_USER_TOLINO))
 
 
 def account_of(person: dict) -> str:
@@ -72,26 +85,20 @@ def tolino_user_id(hass: HomeAssistant, account: str = DEFAULT_TOLINO_ACCOUNT) -
 
 
 def tolino_accounts(hass: HomeAssistant) -> list[str]:
-    """The bridge accounts that have somebody using them. Without any person: the default account, as before."""
-    users = get_users(hass)
-    if not users:
-        return [DEFAULT_TOLINO_ACCOUNT]
-    return list(dict.fromkeys(account_of(p) for p in users.values() if p.get(CONF_USER_TOLINO)))
+    """The bridge accounts that somebody uses."""
+    return list(dict.fromkeys(account_of(p) for p in get_users(hass).values() if p.get(CONF_USER_TOLINO)))
 
 
 def account_for_user(hass: HomeAssistant, user_id: str | None) -> str:
-    """Which bridge account this person sends to (the default account without any person set up)."""
-    person = get_users(hass).get(user_id or "")
+    """Which bridge account this person sends to (the default account if they have no tolino)."""
+    person = person_of(hass, user_id)
     return account_of(person) if person else DEFAULT_TOLINO_ACCOUNT
 
 
 def tolino_config(hass: HomeAssistant, account: str = DEFAULT_TOLINO_ACCOUNT) -> dict:
-    """Settings for the Tolino jobs (auto-send, progress sync) of one bridge account. Without any person: the main settings,
-    as before. With people: the Audiobookshelf account and the switches of the person who uses that account; nobody does ->
-    the bridge counts as not configured for it."""
+    """Settings for the Tolino jobs (auto-send, progress sync) of one bridge account: the Audiobookshelf account and the
+    switches of the person who uses that account; nobody does -> the bridge counts as not configured for it."""
     cfg = get_config(hass)
-    if not get_users(hass):
-        return cfg if account == DEFAULT_TOLINO_ACCOUNT else {**cfg, CONF_TOLINO_URL: "", CONF_TOLINO_TOKEN: ""}
     uid = tolino_user_id(hass, account)
     if uid is None:
         return {**cfg, CONF_TOLINO_URL: "", CONF_TOLINO_TOKEN: "",

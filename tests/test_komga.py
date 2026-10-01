@@ -8,7 +8,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.books.const import DOMAIN
 from custom_components.books.komga_policy import komga_allowed
 
-from .conftest import ABS, CHAPTARR, ENTRY_DATA
+from .conftest import ABS, CHAPTARR, ENTRY_DATA, admin_person
 
 KOMGA = "http://komga.test:25600"
 JSON = {"Content-Type": "application/json"}
@@ -49,7 +49,8 @@ def test_blocked(method, path):
 
 @pytest.fixture
 async def komga_entry(hass):
-    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "komga_url": KOMGA, "komga_api_key": "komga-key"})
+    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "komga_url": KOMGA, "komga_api_key": "komga-key"},
+                            subentries_data=[await admin_person(hass)])
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()

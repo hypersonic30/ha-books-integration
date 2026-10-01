@@ -88,9 +88,11 @@ async def test_each_person_reads_komga_with_their_own_key(hass, household, cast,
     aioclient_mock.get(f"{KOMGA}/api/v1/series", json={"content": []}, headers=JSON)
     seen = {}
     for who in ("anna", "ben", "cara"):
-        await (await login(cast[who])).get("/api/books/komga/v1/series")
-        seen[who] = _last_headers(aioclient_mock)["X-API-Key"]
-    assert seen == {"anna": "komga-anna", "ben": "komga-ben", "cara": "komga-shared"}      # Cara: no account of her own -> shared
+        r = await (await login(cast[who])).get("/api/books/komga/v1/series")
+        seen[who] = _last_headers(aioclient_mock)["X-API-Key"] if r.status == 200 else None
+        if who == "cara":
+            assert r.status == 403 and (await r.json())["code"] == "no_person"
+    assert seen == {"anna": "komga-anna", "ben": "komga-ben", "cara": None}                # Cara is no person: no access at all
 
 
 async def test_progress_is_written_to_the_asking_persons_account(hass, household, cast, login, aioclient_mock):
@@ -115,8 +117,9 @@ async def test_adding_and_removing_people_applies_without_a_reload(hass, househo
     sub = next(s for s in household.subentries.values() if s.unique_id == cast["ben"].id)
     hass.config_entries.async_remove_subentry(household, sub.subentry_id)
     await hass.async_block_till_done()
-    await (await login(cast["ben"])).get("/api/books/komga/v1/series")
-    assert _last_headers(aioclient_mock)["X-API-Key"] == "komga-shared"
+    calls_before = aioclient_mock.call_count
+    r = await (await login(cast["ben"])).get("/api/books/komga/v1/series")
+    assert r.status == 403 and aioclient_mock.call_count == calls_before                     # removed: no access, nothing reaches Komga
     hass.config_entries.async_update_subentry(household, next(iter(household.subentries.values())), data={
         **next(iter(household.subentries.values())).data, "komga_api_key": "komga-anna-2"})
     await hass.async_block_till_done()
@@ -135,9 +138,10 @@ async def test_without_any_person_everything_is_as_before(hass, setup_entry, has
 async def test_tolino_button_only_for_people_with_a_tolino(hass, household, cast, login, aioclient_mock):
     aioclient_mock.get(f"{BRIDGE}/status", json={"logged_in": True}, headers=JSON)
     assert (await (await (await login(cast["anna"])).get("/api/books/tolino")).json())["enabled"] is True
-    for who in ("ben", "cara"):
-        body = await (await (await login(cast[who])).get("/api/books/tolino")).json()
-        assert body == {"enabled": False}, who
+    body = await (await (await login(cast["ben"])).get("/api/books/tolino")).json()
+    assert body == {"enabled": False}                                                          # a person without a tolino
+    r = await (await login(cast["cara"])).get("/api/books/tolino")
+    assert r.status == 403 and (await r.json())["code"] == "no_person"                        # no person at all
 
 
 @pytest.mark.parametrize("path", ["/api/books/tolino", "/api/books/tolino-sync", "/api/books/tolino-autosend"])
@@ -346,7 +350,7 @@ def _set(hass, household, sub, **changes):
 
 
 async def test_the_switches_come_from_the_tolino_person_not_from_the_main_settings(hass, household, cast):
-    auto, sync = hass.data[DOMAIN]["auto_send"], hass.data[DOMAIN]["progress_sync"]
+    auto, sync = hass.data[DOMAIN]["jobs"]["default"]["auto_send"], hass.data[DOMAIN]["jobs"]["default"]["progress_sync"]
     assert not auto.enabled and not sync.enabled and not sync.write_enabled                 # all off for Anna
     hass.config_entries.async_update_entry(household, data={**household.data, "auto_send": True, "sync_progress": True, "sync_progress_write": True})
     await hass.async_block_till_done()
@@ -362,11 +366,11 @@ async def test_the_switches_come_from_the_tolino_person_not_from_the_main_settin
 async def test_a_person_can_have_progress_sync_without_auto_send(hass, household, cast):
     _set(hass, household, _anna(household, cast), auto_send=False, sync_progress=True)
     await hass.async_block_till_done()
-    assert hass.data[DOMAIN]["progress_sync"].enabled and not hass.data[DOMAIN]["auto_send"].enabled
+    assert hass.data[DOMAIN]["jobs"]["default"]["progress_sync"].enabled and not hass.data[DOMAIN]["jobs"]["default"]["auto_send"].enabled
 
 
 async def test_switching_auto_send_on_starts_from_now_and_never_floods_old_books(hass, household, cast):
-    auto = hass.data[DOMAIN]["auto_send"]
+    auto = hass.data[DOMAIN]["jobs"]["default"]["auto_send"]
     assert not auto.state.get("active")
     before = int(time.time() * 1000)
     _set(hass, household, _anna(household, cast), auto_send=True)
@@ -377,7 +381,7 @@ async def test_switching_auto_send_on_starts_from_now_and_never_floods_old_books
 
 async def test_a_new_tolino_person_starts_from_now_too(hass, household, cast):
     """The bridge stays on the whole time; only the person changes (Anna hands the Tolino over to Ben)."""
-    auto = hass.data[DOMAIN]["auto_send"]
+    auto = hass.data[DOMAIN]["jobs"]["default"]["auto_send"]
     ben = next(s for s in household.subentries.values() if s.unique_id == cast["ben"].id)
     _set(hass, household, _anna(household, cast), auto_send=True)
     _set(hass, household, ben, tolino=True, auto_send=True)                      # Anna is still the first Tolino person
@@ -391,7 +395,7 @@ async def test_a_new_tolino_person_starts_from_now_too(hass, household, cast):
 
 
 async def test_turning_the_switch_off_and_on_again_starts_over(hass, household, cast):
-    auto = hass.data[DOMAIN]["auto_send"]
+    auto = hass.data[DOMAIN]["jobs"]["default"]["auto_send"]
     _set(hass, household, _anna(household, cast), auto_send=True)
     await hass.async_block_till_done()
     _set(hass, household, _anna(household, cast), auto_send=False)

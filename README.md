@@ -99,26 +99,33 @@ parameter: `findComic`, `getIndex`, `getComic`, `getWanted`, `getHistory` (GET) 
 when every indexer has been asked (over a minute was seen), so the proxy answers `202` at once and lets Mylar finish in the
 background; the card follows progress through `getWanted`/`getHistory`.
 
-### People: one account each (optional)
+### People (required)
 
-By default everybody who uses the cards reads with the **same** Komga/Audiobookshelf account - so one person sees what another reads and
-reading the same book overwrites the other's progress. Give everybody their own accounts instead:
+Every Home Assistant user who uses the cards needs a **person**: their own accounts, so nobody sees or overwrites somebody else's reading
+progress. **Without a person there is no access** (the cards get `403 no_person` with a message that says what to do), and while nobody has been
+added at all, Home Assistant shows a repair hint.
 
 1. Create a Komga user (no admin rights) and an Audiobookshelf user for each person, and note their API key / token.
 2. Settings → Devices & Services → Books → **Add person**. Pick the Home Assistant user, paste their Komga key and/or Audiobookshelf token
-   (empty = that person keeps using the shared account), optionally a notify target and whether they use the Tolino bridge. The keys are
-   checked when you save and the name of the account they belong to is stored with the person.
-3. People can be added, edited and removed at any time, no restart. Everybody without an entry keeps the shared account.
+   (empty = that person uses the shared key/token of the main settings), optionally a notify target and whether they use the tolino bridge.
+   The keys are checked when you save and the name of the account they belong to is stored with the person.
+3. People can be added, edited and removed at any time, no restart.
 
-What changes for a person with their own accounts: their own reading progress, bookmarks and "Weiterlesen" in the Books and Manga cards;
-**"An tolino senden" only for people marked as Tolino users**, each with **their own Thalia account in the bridge** (the person's
-"Tolino account" = the name from `deploy.sh account add NAME`; empty = the bridge's default account; the form offers the accounts the bridge
-knows and refuses one that is unknown or already used). Everything runs per account: the list of sent books, auto-send, taking reading progress
-from tolino and sending it to tolino (switches of the person; the matching switches in the main settings only count while nobody has been
-added), the bridge alert ("tolino-Bridge Problem (anna)", to the notify target of the main settings) - each with that person's Audiobookshelf
-account. Once anybody is added and nobody is marked, the bridge features are off; and a push to **their** notify target when a book or manga
-volume **they** asked for is in the library ("Neu in der Bibliothek"; also fired as the event `books_wish_fulfilled`). Books are recognised by title
-and author - a comparison, not a hard link - manga volumes exactly. Nobody is told what the others load.
+What a person gets: their own reading progress, bookmarks and "Weiterlesen" in the Books and Manga cards; and, if marked as a **tolino user**,
+"An tolino senden" with **their own Thalia account in the bridge** (the person's "Tolino account" = the name from `deploy.sh account add NAME`;
+empty = the bridge's default account; the form offers the accounts the bridge knows and refuses one that is unknown or already used).
+Everything runs per account: the list of sent books, auto-send, taking reading progress from tolino and sending it to tolino (the three
+switches of the person), each with that person's Audiobookshelf account.
+
+**Who is told what**
+- The notify target of the main settings (the administrator) hears about everything: bridge/account problems (with the account named),
+  auto-send giving a book up, failed import repairs - and as a persistent notification in Home Assistant.
+- A person whose tolino account has a problem is told on **their own** notify target ("Dein tolino-Konto ist gerade nicht eingeloggt …",
+  and again when it works) - not twice if that target is also the administrator's. A bridge that does not answer at all is **one** alert (to the
+  administrator and each tolino person), not one per account.
+- A push "Neu in der Bibliothek" goes to the person who asked for a book or manga volume when it arrives (also fired as the event
+  `books_wish_fulfilled`). Books are recognised by title and author - a comparison, not a hard link - manga volumes exactly. Nobody is told
+  what the others load.
 
 #### Renaming the bridge's original account
 
@@ -140,16 +147,14 @@ Settings → Devices & Services → Add Integration → **Books**:
 | Komga URL / API key | optional, for the Manga Card: address of your Komga and the API key of a Komga user **without admin rights**. Checked when you save |
 | Mylar3 URL / API key | optional, for searching and downloading manga in the Manga Card: address of Mylar3 and its API key (Mylar → Settings → Web Interface → API, enable it first). Checked when you save |
 | Tolino bridge URL / token | optional: address of your tolino-bridge (e.g. `http://192.168.1.10:8199`) and its token (`deploy.sh token`). Leave empty to disable "send to Tolino" |
-| Automatically send new ebooks to tolino | optional, **off by default**: every 10 minutes, ebooks that newly appear in Audiobookshelf (EPUB/PDF; MOBI/AZW3 are converted by the bridge) are sent to the tolino Cloud. Only books added **after** you switch it on — your existing library is never touched; at most 5 per run. Books that cannot be sent (unsupported, too large, conversion failed) are reported once (notification + push) and not retried; bridge/Thalia trouble is retried next time. Needs the tolino bridge |
-| Sync reading progress from tolino | optional, **off by default**: every 10 minutes, the reading position and "finished" state of books you sent to tolino are imported into Audiobookshelf (and so the card resumes where you stopped on the reader). Only books sent through this integration; a newer Audiobookshelf state is never overwritten; needs the tolino bridge |
-| Also write reading progress to tolino | optional, **off by default**, needs the option above: the other direction. What you read in the card (position, "finished") is written to the tolino Cloud so the reader continues there. The newer state wins; per book the last seen state on each side is remembered, so nothing ping-pongs |
 | Verify SSL | disable only for self-signed certificates |
 | Automatically repair blocked imports | see above (default on) |
 | Notification target | optional: a notify entity (e.g. `notify.iphone`, as used by `notify.send_message`) or a legacy notify service (e.g. `notify.mobile_app_iphone`); several separated by commas — told when a repair fails |
 
-These settings are the **shared account** and the switches for installations without people. Once you add people (below), the
-Komga key and Audiobookshelf token here are only used by everybody without an entry of their own, and the three tolino switches are set
-per person instead.
+**People are required** (see *People* below): whoever uses the cards needs a person, and the tolino switches (auto-send, taking reading
+progress from tolino, sending it to tolino) are settings of the person. The Komga key and the Audiobookshelf token here are the **shared**
+ones, used by every person who does not enter their own (and by background jobs); the bridge URL/token and the notification target are the
+administrator's.
 
 Change anything later with the integration's **Reconfigure** action; it applies immediately.
 

@@ -11,7 +11,7 @@ from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClien
 from custom_components.books.const import DOMAIN
 from custom_components.books.mylar_policy import mylar_request
 
-from .conftest import ABS, CHAPTARR, ENTRY_DATA
+from .conftest import ABS, CHAPTARR, ENTRY_DATA, admin_person
 
 MYLAR = "http://mylar.test:8090"
 JSON = {"Content-Type": "application/json"}
@@ -61,7 +61,8 @@ def test_blocked(method, cmd, query):
 
 @pytest.fixture
 async def mylar_entry(hass):
-    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "mylar_url": MYLAR, "mylar_api_key": "mylar-key"})
+    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "mylar_url": MYLAR, "mylar_api_key": "mylar-key"},
+                            subentries_data=[await admin_person(hass)])
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()

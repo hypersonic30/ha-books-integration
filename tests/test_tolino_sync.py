@@ -8,7 +8,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.books.const import DOMAIN
 
-from .conftest import ABS, ENTRY_DATA
+from .conftest import ABS, ENTRY_DATA, admin_person
 
 BRIDGE = "http://bridge.test:8199"
 JSON = {"Content-Type": "application/json"}
@@ -48,12 +48,13 @@ async def synced(hass, monkeypatch):
     async def healthy(self):
         return {"reachable": True, "logged_in": True, "problem": False}
     monkeypatch.setattr("custom_components.books.tolino_watch.TolinoWatcher._async_update_data", healthy)
-    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bt", "sync_progress": True})
+    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bt"},
+                            subentries_data=[await admin_person(hass, tolino=True, sync_progress=True)])
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     await hass.data[DOMAIN]["tolino_sent"].async_set(ITEM, DID, "x.epub")
-    return hass.data[DOMAIN]["progress_sync"]
+    return hass.data[DOMAIN]["jobs"]["default"]["progress_sync"]
 
 
 def state(progress=0.5, pos="OEBPS/b.xhtml#point(/1/4/2/1:9)", modified=2000, finished=False):
@@ -181,19 +182,21 @@ async def test_off_by_default(hass, aioclient_mock, monkeypatch):
     async def healthy(self):
         return {"reachable": True, "logged_in": True, "problem": False}
     monkeypatch.setattr("custom_components.books.tolino_watch.TolinoWatcher._async_update_data", healthy)
-    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bt"})   # no sync_progress key
+    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bt"},
+                            subentries_data=[await admin_person(hass, tolino=True)])   # sync_progress off
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id); await hass.async_block_till_done()
-    sync = hass.data[DOMAIN]["progress_sync"]
+    sync = hass.data[DOMAIN]["jobs"]["default"]["progress_sync"]
     assert sync.enabled is False and await sync.async_tick() is None
     assert aioclient_mock.call_count == 0
 
 
 async def test_needs_a_bridge_even_when_switched_on(hass, monkeypatch):
-    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "sync_progress": True})
+    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA},
+                            subentries_data=[await admin_person(hass, tolino=True, sync_progress=True)])
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id); await hass.async_block_till_done()
-    assert hass.data[DOMAIN]["progress_sync"].enabled is False
+    assert hass.data[DOMAIN]["jobs"]["default"]["progress_sync"].enabled is False
 
 
 async def test_manual_endpoint(hass, synced, hass_client, hass_client_no_auth, aioclient_mock):
@@ -203,7 +206,14 @@ async def test_manual_endpoint(hass, synced, hass_client, hass_client_no_auth, a
     assert resp.status == 200 and (await resp.json())["imported"] == [ITEM]
 
 
-async def test_manual_endpoint_refuses_when_off(hass, hass_client, setup_entry):
+async def test_manual_endpoint_refuses_when_off(hass, hass_client, monkeypatch):
+    async def healthy(self):
+        return {"reachable": True, "logged_in": True, "problem": False}
+    monkeypatch.setattr("custom_components.books.tolino_watch.TolinoWatcher._async_update_data", healthy)
+    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bt"},
+                            subentries_data=[await admin_person(hass, tolino=True)])        # sync switch off
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id); await hass.async_block_till_done()
     resp = await (await hass_client()).post("/api/books/tolino-sync")
     assert resp.status == 409 and (await resp.json())["code"] == "sync_disabled"
 

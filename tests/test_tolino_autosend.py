@@ -9,7 +9,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 from custom_components.books import tolino_autosend
 from custom_components.books.const import DOMAIN
 
-from .conftest import ABS, ENTRY_DATA
+from .conftest import ABS, ENTRY_DATA, admin_person
 
 BRIDGE = "http://bridge.test:8199"
 JSON = {"Content-Type": "application/json"}
@@ -23,12 +23,12 @@ async def _setup(hass, monkeypatch, auto=True, extra=None):
     async def healthy(self):
         return {"reachable": True, "logged_in": True, "problem": False}
     monkeypatch.setattr("custom_components.books.tolino_watch.TolinoWatcher._async_update_data", healthy)
-    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bt",
-                                                                "auto_send": auto, **(extra or {})})
+    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bt", **(extra or {})},
+                            subentries_data=[await admin_person(hass, tolino=True, auto_send=auto)])
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    job = hass.data[DOMAIN]["auto_send"]
+    job = hass.data[DOMAIN]["jobs"]["default"]["auto_send"]
     job.state["since"] = NOW                                   # deterministic: "new" means added after NOW
     return job
 
@@ -169,19 +169,21 @@ async def test_switching_off_and_on_again_resets_the_baseline(hass, monkeypatch)
     job = await _setup(hass, monkeypatch, auto=True)
     job.state["since"] = 12345
     await job._store.async_save(job.state)                                     # what a real run leaves behind
-    hass.data[DOMAIN]["config"]["auto_send"] = False
+    person = next(iter(hass.data[DOMAIN]["users"].values()))
+    person["auto_send"] = False
     await job.async_start()
     assert job.state["active"] is False and job.state["since"] == 12345
-    hass.data[DOMAIN]["config"]["auto_send"] = True
+    person["auto_send"] = True
     await job.async_start()
     assert job.state["active"] is True and job.state["since"] > NOW - 5 * 60 * 1000          # new baseline, old gap not sent
 
 
 async def test_needs_a_bridge(hass, monkeypatch):
-    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "auto_send": True})
+    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA},
+                            subentries_data=[await admin_person(hass, tolino=True, auto_send=True)])
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id); await hass.async_block_till_done()
-    assert hass.data[DOMAIN]["auto_send"].enabled is False
+    assert hass.data[DOMAIN]["jobs"]["default"]["auto_send"].enabled is False
 
 
 async def test_manual_endpoint(hass, job, hass_client, hass_client_no_auth, aioclient_mock):

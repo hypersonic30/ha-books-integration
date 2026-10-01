@@ -4,7 +4,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.books.const import DOMAIN
 
-from .conftest import ABS, ENTRY_DATA
+from .conftest import ABS, ENTRY_DATA, admin_person
 from .test_tolino_sync import BRIDGE, DID, ITEM, JSON, make_epub, mock_world, patches, state
 
 
@@ -12,13 +12,13 @@ async def _make(hass, monkeypatch, write):
     async def healthy(self):
         return {"reachable": True, "logged_in": True, "problem": False}
     monkeypatch.setattr("custom_components.books.tolino_watch.TolinoWatcher._async_update_data", healthy)
-    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bt",
-                                                                "sync_progress": True, "sync_progress_write": write})
+    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bt"},
+                            subentries_data=[await admin_person(hass, tolino=True, sync_progress=True, sync_progress_write=write)])
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     await hass.data[DOMAIN]["tolino_sent"].async_set(ITEM, DID, "x.epub")
-    return hass.data[DOMAIN]["progress_sync"]
+    return hass.data[DOMAIN]["jobs"]["default"]["progress_sync"]
 
 
 @pytest.fixture
@@ -183,7 +183,8 @@ async def test_write_option_defaults_to_off(hass, monkeypatch):
     async def healthy(self):
         return {"reachable": True, "logged_in": True, "problem": False}
     monkeypatch.setattr("custom_components.books.tolino_watch.TolinoWatcher._async_update_data", healthy)
-    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bt", "sync_progress": True})
+    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bt"},
+                            subentries_data=[await admin_person(hass, tolino=True, sync_progress=True)])
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id); await hass.async_block_till_done()
-    assert hass.data[DOMAIN]["progress_sync"].enabled is True and hass.data[DOMAIN]["progress_sync"].write_enabled is False
+    assert hass.data[DOMAIN]["jobs"]["default"]["progress_sync"].enabled is True and hass.data[DOMAIN]["jobs"]["default"]["progress_sync"].write_enabled is False

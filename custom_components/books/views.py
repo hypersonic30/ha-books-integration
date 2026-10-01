@@ -23,7 +23,7 @@ from .api import ChaptarrClient, TolinoBridgeClient, UpstreamError, get_config
 from .komga_policy import komga_allowed
 from .mylar_policy import mylar_request
 from .tolino_registry import async_ensure_registry
-from .users import account_for_user, config_for, tolino_allowed, user_of
+from .users import NO_PERSON, access_denied, account_for_user, config_for, tolino_allowed, user_of
 from .tolino_send import SendError, async_send_to_tolino
 from .const import (
     CHAPTARR_ALLOWED_COMMANDS,
@@ -73,6 +73,8 @@ class _ProxyBase(HomeAssistantView):
         return await self._handle(request, path, "DELETE")
 
     async def _handle(self, request: web.Request, path: str, method: str) -> web.StreamResponse:
+        if access_denied(self._hass, user_of(request)):
+            return web.json_response(NO_PERSON, status=403)
         cfg = config_for(self._hass, user_of(request))     # the asking person's own Komga key / Audiobookshelf token
         try:
             return await self._route(request, path, method, cfg)
@@ -365,6 +367,8 @@ class AddBookView(HomeAssistantView):
         self._hass = hass
 
     async def post(self, request: web.Request) -> web.Response:
+        if access_denied(self._hass, user_of(request)):
+            return web.json_response(NO_PERSON, status=403)
         try:
             data = await request.json()
         except ValueError:
@@ -432,6 +436,8 @@ class TolinoView(HomeAssistantView):
         self._hass = hass
 
     async def get(self, request: web.Request) -> web.Response:
+        if access_denied(self._hass, user_of(request)):
+            return web.json_response(NO_PERSON, status=403)
         account = account_for_user(self._hass, user_of(request))
         bridge = TolinoBridgeClient(self._hass, get_config(self._hass), account)
         if not bridge.configured or not tolino_allowed(self._hass, user_of(request)):
@@ -452,6 +458,8 @@ class TolinoView(HomeAssistantView):
         })
 
     async def post(self, request: web.Request) -> web.Response:
+        if access_denied(self._hass, user_of(request)):
+            return web.json_response(NO_PERSON, status=403)
         if not tolino_allowed(self._hass, user_of(request)):
             return web.json_response({"error": "No Tolino is set up for your account", "code": "no_tolino"}, status=403)
         try:
@@ -482,6 +490,8 @@ class TolinoSyncView(HomeAssistantView):
         self._hass = hass
 
     async def post(self, request: web.Request) -> web.Response:
+        if access_denied(self._hass, user_of(request)):
+            return web.json_response(NO_PERSON, status=403)
         if not tolino_allowed(self._hass, user_of(request)):
             return web.json_response({"error": "No Tolino is set up for your account", "code": "no_tolino"}, status=403)
         sync = self._hass.data[DOMAIN]["jobs"].get(account_for_user(self._hass, user_of(request)), {}).get("progress_sync")
@@ -502,6 +512,8 @@ class TolinoAutoSendView(HomeAssistantView):
         self._hass = hass
 
     async def post(self, request: web.Request) -> web.Response:
+        if access_denied(self._hass, user_of(request)):
+            return web.json_response(NO_PERSON, status=403)
         if not tolino_allowed(self._hass, user_of(request)):
             return web.json_response({"error": "No Tolino is set up for your account", "code": "no_tolino"}, status=403)
         job = self._hass.data[DOMAIN]["jobs"].get(account_for_user(self._hass, user_of(request)), {}).get("auto_send")

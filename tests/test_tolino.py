@@ -6,7 +6,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.books.const import DOMAIN
 
-from .conftest import ABS, CHAPTARR, ENTRY_DATA
+from .conftest import ABS, CHAPTARR, ENTRY_DATA, admin_person
 
 BRIDGE = "http://bridge.test:8199"
 ITEM = {"media": {"metadata": {"title": "Das Reich der Dämmerung"},
@@ -21,8 +21,8 @@ async def tolino_entry(hass, monkeypatch):
     async def healthy(self):
         return {"reachable": True, "logged_in": True, "problem": False}
     monkeypatch.setattr("custom_components.books.tolino_watch.TolinoWatcher._async_update_data", healthy)
-    entry = MockConfigEntry(domain=DOMAIN, title="Books",
-                            data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bridge-token"})
+    entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "tolino_url": BRIDGE, "tolino_token": "bridge-token"},
+                            subentries_data=[await admin_person(hass, tolino=True)])
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -92,7 +92,10 @@ async def test_send_rejects_bad_item_id(hass, tolino_entry, hass_client, aioclie
     assert aioclient_mock.call_count == 0  # nothing reached Audiobookshelf
 
 
-async def test_send_not_configured(hass, setup_entry, hass_client):
+async def test_send_not_configured(hass, hass_client):
+    entry = MockConfigEntry(domain=DOMAIN, title="Books", data=dict(ENTRY_DATA), subentries_data=[await admin_person(hass, tolino=True)])
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id); await hass.async_block_till_done()          # a Tolino person, but no bridge
     resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})
     assert resp.status == 503 and (await resp.json())["code"] == "not_configured"
 
@@ -234,7 +237,7 @@ async def test_send_keeps_umlauts_in_multipart_filename(hass, hass_client, socke
     base = f"http://127.0.0.1:{port}"
     try:
         entry = MockConfigEntry(domain=DOMAIN, title="Books", data={
-            **ENTRY_DATA, "abs_url": base, "tolino_url": base, "tolino_token": "t"})
+            **ENTRY_DATA, "abs_url": base, "tolino_url": base, "tolino_token": "t"}, subentries_data=[await admin_person(hass, tolino=True)])
         entry.add_to_hass(hass)
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
@@ -417,7 +420,8 @@ async def test_convertible_upload_carries_the_original_filename(hass, tolino_ent
     await web.TCPSite(runner, "127.0.0.1", port).start()
     base = f"http://127.0.0.1:{port}"
     try:
-        entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "abs_url": base, "tolino_url": base, "tolino_token": "t"})
+        entry = MockConfigEntry(domain=DOMAIN, title="Books", data={**ENTRY_DATA, "abs_url": base, "tolino_url": base, "tolino_token": "t"},
+                                subentries_data=[await admin_person(hass, tolino=True)])
         entry.add_to_hass(hass)
         assert await hass.config_entries.async_setup(entry.entry_id); await hass.async_block_till_done()
         resp = await (await hass_client()).post("/api/books/tolino", json={"abs_item_id": "abc123"})

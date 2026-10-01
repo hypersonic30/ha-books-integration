@@ -20,8 +20,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
 from .api import TolinoBridgeClient, UpstreamError, get_config
-from .const import DEFAULT_TOLINO_ACCOUNT, DOMAIN
-from .users import tolino_accounts
+from .const import CONF_NOTIFY_SERVICE, DEFAULT_TOLINO_ACCOUNT, DOMAIN
+from .users import get_users, tolino_accounts, tolino_user_id
 from .notify_helper import async_push
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,9 +31,19 @@ BAD_POLLS_BEFORE_ALERT = 2
 NOTIFICATION_ID = "books_tolino_bridge"
 
 
+BRIDGE_KEY = "bridge"                        # the incident "the whole bridge is unreachable" (one alert, not one per account)
+
+
+def _targets(raw: str | None) -> list[str]:
+    return [t.strip() for t in (raw or "").split(",") if t.strip()]
+
+
 class TolinoWatcher(DataUpdateCoordinator[dict]):
-    """Polls /status of every bridge account that somebody uses. The top-level fields of the data are those of the first account
-    (what the single account always showed); `problem` is on when any account has one; `accounts` has them all."""
+    """Polls /status of every bridge account that somebody uses. The top-level fields of the data are those of the first account;
+    `problem` is on when the bridge or any account has one; `accounts` has them all.
+
+    Who hears about it: the notify target of the main settings (the administrator) always, plus every person whose tolino
+    account is affected - on their own target (not twice if it is also the administrator's)."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(hass, _LOGGER, config_entry=entry, name="Tolino bridge", update_interval=POLL_INTERVAL)
@@ -42,18 +52,19 @@ class TolinoWatcher(DataUpdateCoordinator[dict]):
 
     async def _async_update_data(self) -> dict:
         accounts = tolino_accounts(self.hass)
-        if not accounts:                                       # people exist, but nobody uses the bridge: nothing to watch
+        if not accounts:                                       # nobody uses the bridge: nothing to watch
+            await self._clear_all()
             return {"reachable": True, "logged_in": True, "problem": False, "accounts": {}}
         results = {account: await self._poll(account) for account in accounts}
+        bridge_down = all(not r["reachable"] for r in results.values())
         named = len(accounts) > 1 or accounts[0] != DEFAULT_TOLINO_ACCOUNT
+        # One incident for a bridge that does not answer; account incidents only while the bridge does.
+        await self._track(BRIDGE_KEY, bridge_down, None, accounts)
         for account, data in results.items():
-            await self._announce(account, data, named)
-        for gone in (set(self._bad_polls) | self._alerted) - set(accounts):       # an account nobody uses any more
-            self._bad_polls.pop(gone, None)
-            if gone in self._alerted:
-                self._alerted.discard(gone)
-                persistent_notification.async_dismiss(self.hass, self._notification_id(gone))
-        return {**results[accounts[0]], "accounts": results, "problem": any(r["problem"] for r in results.values())}
+            await self._track(account, (not bridge_down) and data["reachable"] and not data["logged_in"], data, [account], named)
+        for gone in {k for k in (set(self._bad_polls) | self._alerted) if k != BRIDGE_KEY} - set(accounts):
+            await self._clear(gone)                              # an account nobody uses any more
+        return {**results[accounts[0]], "accounts": results, "problem": bridge_down or any(r["problem"] for r in results.values())}
 
     async def _poll(self, account: str) -> dict:
         bridge = TolinoBridgeClient(self.hass, get_config(self.hass), account)
@@ -70,28 +81,78 @@ class TolinoWatcher(DataUpdateCoordinator[dict]):
         return data
 
     @staticmethod
-    def _notification_id(account: str) -> str:
-        return NOTIFICATION_ID if account == DEFAULT_TOLINO_ACCOUNT else f"{NOTIFICATION_ID}_{account}"
+    def _notification_id(key: str) -> str:
+        return NOTIFICATION_ID if key in (BRIDGE_KEY, DEFAULT_TOLINO_ACCOUNT) else f"{NOTIFICATION_ID}_{key}"
 
-    async def _announce(self, account: str, data: dict, named: bool) -> None:
-        label = f" ({account})" if named else ""
-        if data["problem"]:
-            self._bad_polls[account] = self._bad_polls.get(account, 0) + 1
-            if self._bad_polls[account] >= BAD_POLLS_BEFORE_ALERT and account not in self._alerted:
-                self._alerted.add(account)
-                reason = data.get("last_error") or "unbekannter Grund"
-                whose = f" für das Konto „{account}“" if named else ""
-                text = (f"Die tolino-Bridge ist{whose} gerade nicht einsatzbereit: {reason}. "
-                        "Bücher lassen sich so nicht an tolino senden. Details: `deploy.sh status` bzw. Logs auf dem Server.")
-                persistent_notification.async_create(
-                    self.hass, text, title=f"tolino-Bridge Problem{label}", notification_id=self._notification_id(account))
-                await async_push(self.hass, f"tolino-Bridge Problem{label}", text)
+    def _people(self, accounts: list[str]) -> list[tuple[str, str]]:
+        """(account, notify target) of the people using these accounts."""
+        out = []
+        for account in accounts:
+            uid = tolino_user_id(self.hass, account)
+            if uid:
+                out.append((account, get_users(self.hass)[uid].get(CONF_NOTIFY_SERVICE) or ""))
+        return out
+
+    async def _track(self, key: str, bad: bool, data: dict | None, accounts: list[str], named: bool = True) -> None:
+        if bad:
+            self._bad_polls[key] = self._bad_polls.get(key, 0) + 1
+            if self._bad_polls[key] >= BAD_POLLS_BEFORE_ALERT and key not in self._alerted:
+                self._alerted.add(key)
+                await self._alert(key, data, accounts, named)
         else:
-            self._bad_polls[account] = 0
-            if account in self._alerted:
-                self._alerted.discard(account)
-                persistent_notification.async_dismiss(self.hass, self._notification_id(account))
-                await async_push(self.hass, f"tolino-Bridge{label}", "Die tolino-Bridge läuft wieder." if not named else f"Die tolino-Bridge läuft für das Konto „{account}“ wieder.")
+            self._bad_polls[key] = 0
+            if key in self._alerted:
+                self._alerted.discard(key)
+                await self._all_clear(key, accounts, named)
+
+    async def _alert(self, key: str, data: dict | None, accounts: list[str], named: bool) -> None:
+        reason = (data or {}).get("last_error") or "unbekannter Grund"
+        if key == BRIDGE_KEY:
+            title, admin = "tolino-Bridge Problem", ("Die tolino-Bridge ist gerade nicht erreichbar. Bücher lassen sich so nicht an tolino senden, "
+                                                     "der Lesefortschritt wird nicht abgeglichen. Details: `deploy.sh status` bzw. Logs auf dem Server.")
+            person = "Die tolino-Bridge ist gerade nicht erreichbar. Bis sie wieder läuft, werden keine Bücher gesendet und dein Lesefortschritt nicht abgeglichen."
+        else:
+            label = f" ({key})" if named else ""
+            whose = f" für das Konto „{key}“" if named else ""
+            title = f"tolino-Bridge Problem{label}"
+            admin = (f"Die tolino-Bridge ist{whose} gerade nicht einsatzbereit: {reason}. "
+                     "Bücher lassen sich so nicht an tolino senden. Details: `deploy.sh status` bzw. Logs auf dem Server.")
+            person = (f"Dein tolino-Konto ist gerade nicht eingeloggt: {reason}. Solange das so ist, werden keine Bücher an dein tolino "
+                      "gesendet und dein Lesefortschritt nicht abgeglichen. Der Verwalter ist informiert.")
+        persistent_notification.async_create(self.hass, admin, title=title, notification_id=self._notification_id(key))
+        await self._push(title, admin, "tolino-Konto Problem" if key != BRIDGE_KEY else title, person, accounts)
+
+    async def _all_clear(self, key: str, accounts: list[str], named: bool) -> None:
+        persistent_notification.async_dismiss(self.hass, self._notification_id(key))
+        if key == BRIDGE_KEY:
+            title, admin, person = "tolino-Bridge", "Die tolino-Bridge läuft wieder.", "Die tolino-Bridge läuft wieder."
+        else:
+            label = f" ({key})" if named else ""
+            title = f"tolino-Bridge{label}"
+            admin = "Die tolino-Bridge läuft wieder." if not named else f"Die tolino-Bridge läuft für das Konto „{key}“ wieder."
+            person = "Dein tolino-Konto läuft wieder."
+        await self._push(title, admin, "tolino-Konto" if key != BRIDGE_KEY else title, person, accounts)
+
+    async def _push(self, admin_title: str, admin_text: str, person_title: str, person_text: str, accounts: list[str]) -> None:
+        """The administrator's targets get the full text; each affected person gets theirs on their own target - unless that
+        target is one of the administrator's (they have read the full text already)."""
+        await async_push(self.hass, admin_title, admin_text)
+        known = set(_targets(get_config(self.hass).get(CONF_NOTIFY_SERVICE)))
+        for _account, raw in self._people(accounts):
+            mine = [t for t in _targets(raw) if t not in known]
+            if mine:
+                await async_push(self.hass, person_title, person_text, targets=",".join(mine))
+                known.update(mine)
+
+    async def _clear(self, key: str) -> None:
+        self._bad_polls.pop(key, None)
+        if key in self._alerted:
+            self._alerted.discard(key)
+            persistent_notification.async_dismiss(self.hass, self._notification_id(key))
+
+    async def _clear_all(self) -> None:
+        for key in list(set(self._bad_polls) | self._alerted):
+            await self._clear(key)
 
 
 class TolinoBridgeProblem(CoordinatorEntity[TolinoWatcher], BinarySensorEntity):
