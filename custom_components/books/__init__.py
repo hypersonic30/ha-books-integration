@@ -100,7 +100,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _refresh_users(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    hass.data.setdefault(DOMAIN, {})["users"] = users_from_entry(entry)
+    data = hass.data.setdefault(DOMAIN, {})
+    data["users"] = users_from_entry(entry)
+    if data.get("auto_send"):
+        await data["auto_send"].async_start()      # a switch turned on (or a new Tolino person) starts from now on
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

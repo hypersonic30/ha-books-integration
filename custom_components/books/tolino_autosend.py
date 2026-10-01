@@ -23,7 +23,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .api import AbsClient, TolinoBridgeClient, UpstreamError
-from .users import tolino_config
+from .users import tolino_config, tolino_user_id
 from .const import CONF_AUTO_SEND, DEFAULT_AUTO_SEND, DOMAIN, SIGNAL_AUTOSEND_UPDATED, TOLINO_CONVERTIBLE, TOLINO_FORMATS
 from .notify_helper import async_push
 from .tolino_send import SendError, async_send_to_tolino
@@ -57,8 +57,9 @@ class AutoSender:
         """Load state and note on/off transitions (the entry reloads when the option changes)."""
         self.state.update(await self._store.async_load() or {})
         self.state.setdefault("failed", {})
-        if self.enabled and not self.state.get("active"):
-            self.state.update(active=True, since=int(time.time() * 1000) - SKEW_MARGIN_MS, failed={})
+        owner = tolino_user_id(self._hass)
+        if self.enabled and (not self.state.get("active") or self.state.get("owner") != owner):
+            self.state.update(active=True, owner=owner, since=int(time.time() * 1000) - SKEW_MARGIN_MS, failed={})
             _LOGGER.info("books: auto-send switched on; only books added from now on are sent")
             await self._store.async_save(self.state)
         elif not self.enabled and self.state.get("active"):

@@ -347,6 +347,9 @@ class UserSubentryFlow(ConfigSubentryFlow):
             vol.Optional(CONF_ABS_TOKEN, description={"suggested_value": shown.get(CONF_ABS_TOKEN, "")}): _PASSWORD,
             vol.Optional(CONF_NOTIFY_SERVICE, description={"suggested_value": shown.get(CONF_NOTIFY_SERVICE, "")}): str,
             vol.Required(CONF_USER_TOLINO, default=bool(shown.get(CONF_USER_TOLINO, False))): bool,
+            vol.Required(CONF_AUTO_SEND, default=bool(shown.get(CONF_AUTO_SEND, False))): bool,
+            vol.Required(CONF_SYNC_PROGRESS, default=bool(shown.get(CONF_SYNC_PROGRESS, False))): bool,
+            vol.Required(CONF_SYNC_PROGRESS_WRITE, default=bool(shown.get(CONF_SYNC_PROGRESS_WRITE, False))): bool,
             vol.Required("notify_test", default=False): bool,
         })
         placeholders = {}
@@ -364,6 +367,9 @@ class UserSubentryFlow(ConfigSubentryFlow):
             CONF_ABS_TOKEN: (user_input.get(CONF_ABS_TOKEN) or "").strip(),
             CONF_NOTIFY_SERVICE: (user_input.get(CONF_NOTIFY_SERVICE) or "").strip(),
             CONF_USER_TOLINO: bool(user_input.get(CONF_USER_TOLINO)),
+            CONF_AUTO_SEND: bool(user_input.get(CONF_AUTO_SEND)),
+            CONF_SYNC_PROGRESS: bool(user_input.get(CONF_SYNC_PROGRESS)),
+            CONF_SYNC_PROGRESS_WRITE: bool(user_input.get(CONF_SYNC_PROGRESS_WRITE)),
             "notify_test": bool(user_input.get("notify_test")),
             CONF_KOMGA_NAME: "", CONF_ABS_NAME: "",
         }
@@ -383,6 +389,15 @@ class UserSubentryFlow(ConfigSubentryFlow):
             data[CONF_ABS_NAME] = who
         if data[CONF_USER_TOLINO] and not cfg.get(CONF_TOLINO_URL):
             errors[CONF_USER_TOLINO] = "tolino_bridge_required"
+        # The bridge has one Thalia account for now: one Tolino person, and the switches only make sense for them.
+        mine = sub.subentry_id if sub else None
+        if data[CONF_USER_TOLINO] and any(o.data.get(CONF_USER_TOLINO) for sid, o in entry.subentries.items() if sid != mine):
+            errors[CONF_USER_TOLINO] = "tolino_only_one"
+        for key in (CONF_AUTO_SEND, CONF_SYNC_PROGRESS, CONF_SYNC_PROGRESS_WRITE):
+            if data[key] and not data[CONF_USER_TOLINO]:
+                errors[key] = "tolino_person_required"
+        if data[CONF_SYNC_PROGRESS_WRITE] and not data[CONF_SYNC_PROGRESS]:
+            errors.setdefault(CONF_SYNC_PROGRESS_WRITE, "sync_progress_required")
         if data[CONF_NOTIFY_SERVICE] and unknown_targets(self.hass, data[CONF_NOTIFY_SERVICE]):
             errors[CONF_NOTIFY_SERVICE] = "notify_unknown"
         people = {u.id: u.name for u in await self.hass.auth.async_get_users()}

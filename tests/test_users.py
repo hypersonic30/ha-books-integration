@@ -326,3 +326,110 @@ async def test_the_test_message_is_sent_when_asked(hass, plain_entry, cast, aioc
                            notify_service="notify.anna_phone", tolino=False, notify_test=True)
     await hass.async_block_till_done()
     assert result["type"].value == "create_entry" and len(msgs) == 1 and "Testnachricht" in msgs[0].data["message"]
+
+
+# --- 0.10.1: auto-send and progress sync are per person; only one Tolino person for now --------------------
+
+def _anna(household, cast):
+    return next(s for s in household.subentries.values() if s.unique_id == cast["anna"].id)
+
+
+def _set(hass, household, sub, **changes):
+    hass.config_entries.async_update_subentry(household, sub, data={**household.subentries[sub.subentry_id].data, **changes})
+
+
+async def test_the_switches_come_from_the_tolino_person_not_from_the_main_settings(hass, household, cast):
+    auto, sync = hass.data[DOMAIN]["auto_send"], hass.data[DOMAIN]["progress_sync"]
+    assert not auto.enabled and not sync.enabled and not sync.write_enabled                 # all off for Anna
+    hass.config_entries.async_update_entry(household, data={**household.data, "auto_send": True, "sync_progress": True, "sync_progress_write": True})
+    await hass.async_block_till_done()
+    assert not auto.enabled and not sync.enabled and not sync.write_enabled                 # the main switches do not count once people exist
+    _set(hass, household, _anna(household, cast), auto_send=True, sync_progress=True, sync_progress_write=False)
+    await hass.async_block_till_done()
+    assert auto.enabled and sync.enabled and not sync.write_enabled                         # ... Anna's do
+    _set(hass, household, _anna(household, cast), sync_progress_write=True)
+    await hass.async_block_till_done()
+    assert sync.write_enabled
+
+
+async def test_a_person_can_have_progress_sync_without_auto_send(hass, household, cast):
+    _set(hass, household, _anna(household, cast), auto_send=False, sync_progress=True)
+    await hass.async_block_till_done()
+    assert hass.data[DOMAIN]["progress_sync"].enabled and not hass.data[DOMAIN]["auto_send"].enabled
+
+
+async def test_switching_auto_send_on_starts_from_now_and_never_floods_old_books(hass, household, cast):
+    auto = hass.data[DOMAIN]["auto_send"]
+    assert not auto.state.get("active")
+    before = int(time.time() * 1000)
+    _set(hass, household, _anna(household, cast), auto_send=True)
+    await hass.async_block_till_done()
+    assert auto.state["active"] and auto.state["since"] >= before - 5 * 60 * 1000           # "only books added from now on"
+    assert auto.state["owner"] == cast["anna"].id
+
+
+async def test_a_new_tolino_person_starts_from_now_too(hass, household, cast):
+    """The bridge stays on the whole time; only the person changes (Anna hands the Tolino over to Ben)."""
+    auto = hass.data[DOMAIN]["auto_send"]
+    ben = next(s for s in household.subentries.values() if s.unique_id == cast["ben"].id)
+    _set(hass, household, _anna(household, cast), auto_send=True)
+    _set(hass, household, ben, tolino=True, auto_send=True)                      # Anna is still the first Tolino person
+    await hass.async_block_till_done()
+    assert auto.state["owner"] == cast["anna"].id
+    auto.state["since"] = 1                                                      # pretend it has been running for ages
+    await auto._store.async_save(auto.state)
+    _set(hass, household, _anna(household, cast), tolino=False, auto_send=False)  # ... now Ben is
+    await hass.async_block_till_done()
+    assert auto.state["active"] and auto.state["owner"] == cast["ben"].id and auto.state["since"] > 1000
+
+
+async def test_turning_the_switch_off_and_on_again_starts_over(hass, household, cast):
+    auto = hass.data[DOMAIN]["auto_send"]
+    _set(hass, household, _anna(household, cast), auto_send=True)
+    await hass.async_block_till_done()
+    _set(hass, household, _anna(household, cast), auto_send=False)
+    await hass.async_block_till_done()
+    assert auto.state["active"] is False
+    auto.state["since"] = 1
+    await auto._store.async_save(auto.state)
+    _set(hass, household, _anna(household, cast), auto_send=True)
+    await hass.async_block_till_done()
+    assert auto.state["since"] > 1000
+
+
+@pytest.mark.parametrize("who,extra,errors", [
+    ("cara", {"tolino": True}, {"tolino": "tolino_only_one"}),                                  # Anna already has the bridge
+    ("ben", {"auto_send": True}, {"auto_send": "tolino_person_required"}),
+    ("ben", {"sync_progress": True}, {"sync_progress": "tolino_person_required"}),
+    ("anna", {"sync_progress_write": True, "sync_progress": False}, {"sync_progress_write": "sync_progress_required"}),
+])
+async def test_tolino_rules_in_the_person_form(hass, household, cast, aioclient_mock, who, extra, errors):
+    aioclient_mock.get(f"{KOMGA}/api/v2/users/me", json={"email": "x", "roles": []}, headers=JSON)
+    async_mock_service(hass, "notify", "anna_phone")
+    async_mock_service(hass, "notify", "ben_phone")
+    base = {"komga_api_key": "", "abs_token": "", "notify_service": "", "tolino": False, "auto_send": False,
+            "sync_progress": False, "sync_progress_write": False, "notify_test": False}
+    if who == "cara":
+        flow = await hass.config_entries.subentries.async_init((household.entry_id, "user"), context={"source": config_entries.SOURCE_USER})
+        result = await hass.config_entries.subentries.async_configure(flow["flow_id"], {**base, "ha_user": cast["cara"].id, **extra})
+    else:
+        sub = next(s for s in household.subentries.values() if s.unique_id == cast[who].id)
+        flow = await hass.config_entries.subentries.async_init(
+            (household.entry_id, "user"), context={"source": config_entries.SOURCE_RECONFIGURE, "subentry_id": sub.subentry_id})
+        keep = {"tolino": sub.data["tolino"], "notify_service": sub.data["notify_service"]}
+        result = await hass.config_entries.subentries.async_configure(flow["flow_id"], {**base, **keep, **extra})
+    assert result["type"].value == "form" and result["errors"] == errors
+
+
+async def test_the_one_tolino_person_can_be_edited_without_tripping_the_only_one_rule(hass, household, cast, aioclient_mock):
+    aioclient_mock.get(f"{KOMGA}/api/v2/users/me", json={"email": "x", "roles": []}, headers=JSON)
+    aioclient_mock.get(f"{ABS}/api/me", json={"username": "anna"}, headers=JSON)
+    async_mock_service(hass, "notify", "anna_phone")
+    sub = _anna(household, cast)
+    flow = await hass.config_entries.subentries.async_init(
+        (household.entry_id, "user"), context={"source": config_entries.SOURCE_RECONFIGURE, "subentry_id": sub.subentry_id})
+    done = await hass.config_entries.subentries.async_configure(flow["flow_id"], {
+        "komga_api_key": "komga-anna", "abs_token": "abs-anna", "notify_service": "notify.anna_phone", "tolino": True,
+        "auto_send": True, "sync_progress": True, "sync_progress_write": True, "notify_test": False})
+    assert done["type"].value == "abort" and done["reason"] == "reconfigure_successful"
+    assert household.subentries[sub.subentry_id].data["auto_send"] is True

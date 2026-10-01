@@ -9,6 +9,9 @@ from homeassistant.core import HomeAssistant
 from .api import get_config
 from .const import (
     CONF_ABS_TOKEN,
+    CONF_AUTO_SEND,
+    CONF_SYNC_PROGRESS,
+    CONF_SYNC_PROGRESS_WRITE,
     CONF_HA_USER,
     CONF_KOMGA_API_KEY,
     CONF_TOLINO_TOKEN,
@@ -56,13 +59,21 @@ def tolino_allowed(hass: HomeAssistant, user_id: str | None) -> bool:
     return True if not users else bool(users.get(user_id or "", {}).get(CONF_USER_TOLINO))
 
 
+def tolino_user_id(hass: HomeAssistant) -> str | None:
+    """The person who uses the Tolino bridge (until it can serve several, only one may)."""
+    return next((uid for uid, person in get_users(hass).items() if person.get(CONF_USER_TOLINO)), None)
+
+
 def tolino_config(hass: HomeAssistant) -> dict:
-    """Settings for the background Tolino jobs (auto-send, progress sync): the first Tolino person's Audiobookshelf account.
-    People exist but nobody uses a Tolino -> the bridge counts as not configured."""
-    users = get_users(hass)
-    if not users:
-        return get_config(hass)
-    for uid, person in users.items():
-        if person.get(CONF_USER_TOLINO):
-            return config_for(hass, uid)
-    return {**get_config(hass), CONF_TOLINO_URL: "", CONF_TOLINO_TOKEN: ""}
+    """Settings for the Tolino jobs (auto-send, progress sync). Without any person: the main settings, as before.
+    With people: the Tolino person's Audiobookshelf account and THEIR switches (auto-send / progress sync / write-back);
+    people exist but nobody uses a Tolino -> the bridge counts as not configured."""
+    cfg = get_config(hass)
+    if not get_users(hass):
+        return cfg
+    uid = tolino_user_id(hass)
+    if uid is None:
+        return {**cfg, CONF_TOLINO_URL: "", CONF_TOLINO_TOKEN: "",
+                CONF_AUTO_SEND: False, CONF_SYNC_PROGRESS: False, CONF_SYNC_PROGRESS_WRITE: False}
+    person = get_users(hass)[uid]
+    return {**config_for(hass, uid), **{k: bool(person.get(k)) for k in (CONF_AUTO_SEND, CONF_SYNC_PROGRESS, CONF_SYNC_PROGRESS_WRITE)}}

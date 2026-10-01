@@ -27,16 +27,16 @@
           "chaptarr_url": "e.g. http://192.168.1.10:8789",
           "chaptarr_api_key": "Chaptarr → Settings → General → API Key",
           "abs_url": "e.g. http://192.168.1.10:13378",
-          "abs_token": "Token of a dedicated, restricted Audiobookshelf user (Settings → Users), not the admin",
+          "abs_token": "Shared account for everybody without their own person entry. Token of a dedicated, restricted Audiobookshelf user (Settings → Users), not the admin",
           "komga_url": "e.g. http://192.168.1.10:25600 - for the manga card. Leave empty for no manga section.",
-          "komga_api_key": "Komga -> Account Settings -> API Keys. Use a dedicated Komga user WITHOUT admin rights.",
+          "komga_api_key": "Shared account for everybody without their own person entry. Komga -> Account Settings -> API Keys. Use a dedicated Komga user WITHOUT admin rights.",
           "mylar_url": "e.g. http://192.168.1.10:8090 - to search and download manga. Leave empty for no download section.",
           "mylar_api_key": "Mylar -> Settings -> Web Interface -> API (enable it there first).",
           "tolino_url": "tolino-bridge address, e.g. http://192.168.1.10:8199. Leave empty to keep the share-sheet fallback.",
           "tolino_token": "Value of secrets/bridge_token (deploy.sh token on Unraid)",
-          "auto_send": "Every 10 minutes, ebooks that newly appear in Audiobookshelf (EPUB/PDF; MOBI/AZW3 are converted by the bridge) are sent to the tolino Cloud. Only books added AFTER you switch this on; your existing library is never touched. Needs the tolino bridge. Off by default.",
-          "sync_progress": "Imports the reading position and 'finished' state of books you sent to tolino into Audiobookshelf (and so the card), every 10 minutes. Only books sent through this integration; a newer Audiobookshelf state is never overwritten. Needs the tolino bridge. Off by default.",
-          "sync_progress_write": "Needs the option above. Sends the reading position and 'finished' state from Audiobookshelf (what you read in the card) to the tolino Cloud, so the reader continues there. Only books sent through this integration; the newer state wins. Off by default.",
+          "auto_send": "Every 10 minutes, ebooks that newly appear in Audiobookshelf (EPUB/PDF; MOBI/AZW3 are converted by the bridge) are sent to the tolino Cloud. Only books added AFTER you switch this on; your existing library is never touched. Needs the tolino bridge. Off by default. Only applies while no person has been added - otherwise set it per person.",
+          "sync_progress": "Imports the reading position and 'finished' state of books you sent to tolino into Audiobookshelf (and so the card), every 10 minutes. Only books sent through this integration; a newer Audiobookshelf state is never overwritten. Needs the tolino bridge. Off by default. Only applies while no person has been added - otherwise set it per person.",
+          "sync_progress_write": "Needs the option above. Sends the reading position and 'finished' state from Audiobookshelf (what you read in the card) to the tolino Cloud, so the reader continues there. Only books sent through this integration; the newer state wins. Off by default. Only applies while no person has been added - otherwise set it per person.",
           "verify_ssl": "Disable only for self-signed certificates",
           "rescue_imports": "Assigns downloads that Chaptarr blocks because of a same-series title mix-up to the book they were grabbed for",
           "notify_service": "Notify entity (e.g. notify.iphone_von_max) or notify service (e.g. notify.mobile_app_iphone_von_max); separate several with commas. Notified when an automatic repair fails.",
@@ -68,16 +68,16 @@
           "chaptarr_url": "e.g. http://192.168.1.10:8789",
           "chaptarr_api_key": "Chaptarr → Settings → General → API Key",
           "abs_url": "e.g. http://192.168.1.10:13378",
-          "abs_token": "Token of a dedicated, restricted Audiobookshelf user (Settings → Users), not the admin",
+          "abs_token": "Shared account for everybody without their own person entry. Token of a dedicated, restricted Audiobookshelf user (Settings → Users), not the admin",
           "komga_url": "e.g. http://192.168.1.10:25600 - for the manga card. Leave empty for no manga section.",
-          "komga_api_key": "Komga -> Account Settings -> API Keys. Use a dedicated Komga user WITHOUT admin rights.",
+          "komga_api_key": "Shared account for everybody without their own person entry. Komga -> Account Settings -> API Keys. Use a dedicated Komga user WITHOUT admin rights.",
           "mylar_url": "e.g. http://192.168.1.10:8090 - to search and download manga. Leave empty for no download section.",
           "mylar_api_key": "Mylar -> Settings -> Web Interface -> API (enable it there first).",
           "tolino_url": "tolino-bridge address, e.g. http://192.168.1.10:8199. Leave empty to keep the share-sheet fallback.",
           "tolino_token": "Value of secrets/bridge_token (deploy.sh token on Unraid)",
-          "auto_send": "Every 10 minutes, ebooks that newly appear in Audiobookshelf (EPUB/PDF; MOBI/AZW3 are converted by the bridge) are sent to the tolino Cloud. Only books added AFTER you switch this on; your existing library is never touched. Needs the tolino bridge. Off by default.",
-          "sync_progress": "Imports the reading position and 'finished' state of books you sent to tolino into Audiobookshelf (and so the card), every 10 minutes. Only books sent through this integration; a newer Audiobookshelf state is never overwritten. Needs the tolino bridge. Off by default.",
-          "sync_progress_write": "Needs the option above. Sends the reading position and 'finished' state from Audiobookshelf (what you read in the card) to the tolino Cloud, so the reader continues there. Only books sent through this integration; the newer state wins. Off by default.",
+          "auto_send": "Every 10 minutes, ebooks that newly appear in Audiobookshelf (EPUB/PDF; MOBI/AZW3 are converted by the bridge) are sent to the tolino Cloud. Only books added AFTER you switch this on; your existing library is never touched. Needs the tolino bridge. Off by default. Only applies while no person has been added - otherwise set it per person.",
+          "sync_progress": "Imports the reading position and 'finished' state of books you sent to tolino into Audiobookshelf (and so the card), every 10 minutes. Only books sent through this integration; a newer Audiobookshelf state is never overwritten. Needs the tolino bridge. Off by default. Only applies while no person has been added - otherwise set it per person.",
+          "sync_progress_write": "Needs the option above. Sends the reading position and 'finished' state from Audiobookshelf (what you read in the card) to the tolino Cloud, so the reader continues there. Only books sent through this integration; the newer state wins. Off by default. Only applies while no person has been added - otherwise set it per person.",
           "verify_ssl": "Disable only for self-signed certificates",
           "rescue_imports": "Assigns downloads that Chaptarr blocks because of a same-series title mix-up to the book they were grabbed for",
           "notify_service": "Notify entity (e.g. notify.iphone_von_max) or notify service (e.g. notify.mobile_app_iphone_von_max); separate several with commas. Notified when an automatic repair fails.",
@@ -144,7 +144,10 @@
             "abs_token": "Audiobookshelf token (optional)",
             "notify_service": "Notification (optional)",
             "tolino": "Uses the Tolino bridge",
-            "notify_test": "Send a test message"
+            "notify_test": "Send a test message",
+            "auto_send": "Send new ebooks automatically",
+            "sync_progress": "Take reading progress from tolino",
+            "sync_progress_write": "Send reading progress to tolino"
           },
           "data_description": {
             "ha_user": "Whoever signs in to Home Assistant with this account.",
@@ -152,7 +155,10 @@
             "abs_token": "Audiobookshelf -> this person's user -> API token. Empty = the shared account from the main settings.",
             "notify_service": "e.g. notify.mobile_app_annas_phone - this is where \"your book is here\" goes. Separate several with commas.",
             "tolino": "Shows \"send to tolino\" and runs auto-send and progress sync with this person's account. Needs a bridge in the main settings.",
-            "notify_test": "Sends a test message to the notification target when saving."
+            "notify_test": "Sends a test message to the notification target when saving.",
+            "auto_send": "New ebooks in Audiobookshelf are sent to this tolino automatically. Only books added AFTER you switch it on. Needs \"Uses the Tolino bridge\".",
+            "sync_progress": "Imports reading position and 'finished' of the books sent to tolino into Audiobookshelf (and the card). Needs \"Uses the Tolino bridge\".",
+            "sync_progress_write": "Sends your state from Audiobookshelf (what you read in the card) to tolino. Needs the option above."
           }
         },
         "reconfigure": {
@@ -163,14 +169,20 @@
             "abs_token": "Audiobookshelf token (optional)",
             "notify_service": "Notification (optional)",
             "tolino": "Uses the Tolino bridge",
-            "notify_test": "Send a test message"
+            "notify_test": "Send a test message",
+            "auto_send": "Send new ebooks automatically",
+            "sync_progress": "Take reading progress from tolino",
+            "sync_progress_write": "Send reading progress to tolino"
           },
           "data_description": {
             "komga_api_key": "Komga -> Account Settings -> API Keys of this person. Empty = the shared account from the main settings.",
             "abs_token": "Audiobookshelf -> this person's user -> API token. Empty = the shared account from the main settings.",
             "notify_service": "e.g. notify.mobile_app_annas_phone - this is where \"your book is here\" goes. Separate several with commas.",
             "tolino": "Shows \"send to tolino\" and runs auto-send and progress sync with this person's account. Needs a bridge in the main settings.",
-            "notify_test": "Sends a test message to the notification target when saving."
+            "notify_test": "Sends a test message to the notification target when saving.",
+            "auto_send": "New ebooks in Audiobookshelf are sent to this tolino automatically. Only books added AFTER you switch it on. Needs \"Uses the Tolino bridge\".",
+            "sync_progress": "Imports reading position and 'finished' of the books sent to tolino into Audiobookshelf (and the card). Needs \"Uses the Tolino bridge\".",
+            "sync_progress_write": "Sends your state from Audiobookshelf (what you read in the card) to tolino. Needs the option above."
           }
         }
       },
@@ -183,7 +195,10 @@
         "abs_invalid_auth": "Audiobookshelf rejected the token",
         "ssl_error": "SSL error (certificate)",
         "tolino_bridge_required": "This needs a tolino bridge in the main settings",
-        "notify_unknown": "That notification service does not exist"
+        "notify_unknown": "That notification service does not exist",
+        "tolino_person_required": "This only works with \"Uses the Tolino bridge\" (switch that on too)",
+        "tolino_only_one": "The bridge has one tolino account for now: only one person can use it (several will follow in a later version)",
+        "sync_progress_required": "Needs \"Take reading progress from tolino\" (switch that on too)"
       },
       "abort": {
         "no_users_left": "Every Home Assistant user is already added",
