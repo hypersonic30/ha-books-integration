@@ -79,6 +79,16 @@ It is a strict allow-list — reading (libraries, series, books, page images, th
 library" — and refuses everything else (users, API keys, library settings, original-file downloads). The API key never reaches
 the browser; use a dedicated Komga user **without** admin rights. Page images work as `<img src>` through Home Assistant's signed paths.
 
+### Manga downloads (optional): Mylar3
+
+With a [Mylar3](https://github.com/mylar3/mylar3) URL and API key (Mylar → Settings → Web Interface → API, enable it first),
+`/api/books/mylar/{command}` lets the manga card search ComicVine, add series and queue single volumes. Mylar's API is one URL
+for everything (including deleting series, changing indexers, the log and shutdown), so the allow-list is per command **and** per
+parameter: `findComic`, `getIndex`, `getComic`, `getWanted`, `getHistory` (GET) and `addComic`, `queueIssue`, `unqueueIssue`,
+`pauseComic`, `resumeComic`, `forceSearch` (POST). Everything else is refused with 403. `queueIssue` and `forceSearch` only answer
+when every indexer has been asked (over a minute was seen), so the proxy answers `202` at once and lets Mylar finish in the
+background; the card follows progress through `getWanted`/`getHistory`.
+
 ## Setup
 
 Settings → Devices & Services → Add Integration → **Books**:

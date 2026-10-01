@@ -25,6 +25,8 @@ from .const import (
     CONF_DEBUG_LOGGING,
     CONF_KOMGA_API_KEY,
     CONF_KOMGA_URL,
+    CONF_MYLAR_API_KEY,
+    CONF_MYLAR_URL,
     CONF_NOTIFY_SERVICE,
     CONF_RESCUE_IMPORTS,
     CONF_SYNC_PROGRESS,
@@ -56,6 +58,8 @@ def _schema(defaults: dict) -> vol.Schema:
         vol.Required(CONF_ABS_TOKEN, default=defaults.get(CONF_ABS_TOKEN, "")): _PASSWORD,
         vol.Optional(CONF_KOMGA_URL, description={"suggested_value": defaults.get(CONF_KOMGA_URL, "")}): _URL,
         vol.Optional(CONF_KOMGA_API_KEY, description={"suggested_value": defaults.get(CONF_KOMGA_API_KEY, "")}): _PASSWORD,
+        vol.Optional(CONF_MYLAR_URL, description={"suggested_value": defaults.get(CONF_MYLAR_URL, "")}): _URL,
+        vol.Optional(CONF_MYLAR_API_KEY, description={"suggested_value": defaults.get(CONF_MYLAR_API_KEY, "")}): _PASSWORD,
         vol.Optional(CONF_TOLINO_URL, description={"suggested_value": defaults.get(CONF_TOLINO_URL, "")}): _URL,
         vol.Optional(CONF_TOLINO_TOKEN, description={"suggested_value": defaults.get(CONF_TOLINO_TOKEN, "")}): _PASSWORD,
         vol.Required(CONF_AUTO_SEND, default=defaults.get(CONF_AUTO_SEND, DEFAULT_AUTO_SEND)): bool,
@@ -166,6 +170,27 @@ async def _check_komga(hass: HomeAssistant, url: str, key: str, verify_ssl: bool
     return None if isinstance(me, dict) and "roles" in me else "not_komga"
 
 
+async def _check_mylar(hass: HomeAssistant, url: str, key: str, verify_ssl: bool) -> str | None:
+    """Mylar answers HTTP 200 even for errors: {"success": false, "error": {"code": 460, ...}}."""
+    session = async_get_clientsession(hass, verify_ssl=verify_ssl)
+    try:
+        async with session.get(f"{url}/api", params={"cmd": "getVersion", "apikey": key},
+                               timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)) as resp:
+            if resp.status in (401, 403):
+                return "mylar_invalid_auth"
+            if resp.status != 200:
+                return "mylar_cannot_connect"
+            body = await resp.json(content_type=None)
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        return _error_key("mylar", url, err)
+    if not isinstance(body, dict) or "success" not in body:
+        return "not_mylar"
+    if body["success"]:
+        return None if isinstance(body.get("data"), dict) and "current_version" in body["data"] else "not_mylar"
+    code = (body.get("error") or {}).get("code") if isinstance(body.get("error"), dict) else None
+    return "mylar_invalid_auth" if code == 460 else "not_mylar"
+
+
 async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, str]]:
     data = {**data}
     errors: dict[str, str] = {}
@@ -182,6 +207,14 @@ async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, st
         errors[CONF_KOMGA_API_KEY] = "komga_key_missing"
     elif data[CONF_KOMGA_API_KEY] and not data[CONF_KOMGA_URL]:
         errors[CONF_KOMGA_URL] = "komga_url_missing"
+    data[CONF_MYLAR_URL] = (data.get(CONF_MYLAR_URL) or "").strip().rstrip("/")
+    data[CONF_MYLAR_API_KEY] = (data.get(CONF_MYLAR_API_KEY) or "").strip()
+    if data[CONF_MYLAR_URL] and not data[CONF_MYLAR_URL].startswith(("http://", "https://")):
+        errors[CONF_MYLAR_URL] = "invalid_url"
+    elif data[CONF_MYLAR_URL] and not data[CONF_MYLAR_API_KEY]:
+        errors[CONF_MYLAR_API_KEY] = "mylar_key_missing"
+    elif data[CONF_MYLAR_API_KEY] and not data[CONF_MYLAR_URL]:
+        errors[CONF_MYLAR_URL] = "mylar_url_missing"
     data[CONF_TOLINO_URL] = (data.get(CONF_TOLINO_URL) or "").strip().rstrip("/")
     data[CONF_TOLINO_TOKEN] = (data.get(CONF_TOLINO_TOKEN) or "").strip()
     if data[CONF_TOLINO_URL] and not data[CONF_TOLINO_URL].startswith(("http://", "https://")):
@@ -207,6 +240,9 @@ async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, st
     if data[CONF_KOMGA_URL]:
         if err := await _check_komga(hass, data[CONF_KOMGA_URL], data[CONF_KOMGA_API_KEY], verify):
             errors[CONF_KOMGA_API_KEY if "auth" in err else CONF_KOMGA_URL] = err
+    if data[CONF_MYLAR_URL]:
+        if err := await _check_mylar(hass, data[CONF_MYLAR_URL], data[CONF_MYLAR_API_KEY], verify):
+            errors[CONF_MYLAR_API_KEY if "auth" in err else CONF_MYLAR_URL] = err
     if data[CONF_TOLINO_URL]:
         if err := await _check_tolino(hass, data[CONF_TOLINO_URL], data[CONF_TOLINO_TOKEN], verify):
             errors[CONF_TOLINO_TOKEN if "auth" in err else CONF_TOLINO_URL] = err

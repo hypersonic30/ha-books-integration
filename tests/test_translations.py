@@ -28,9 +28,9 @@ def test_every_field_has_label_and_description(file, step):
 def test_every_error_key_used_by_the_flow_is_translated(file):
     src = (BASE / "config_flow.py").read_text()
     import re
-    used = set(re.findall(r'"((?:chaptarr|abs|tolino|komga|sync_progress)_[a-z_]+|invalid_url|not_chaptarr|not_komga|not_tolino_bridge|ssl_error|unknown)"', src))
+    used = set(re.findall(r'"((?:chaptarr|abs|tolino|komga|mylar|sync_progress)_[a-z_]+|invalid_url|not_chaptarr|not_komga|not_mylar|not_tolino_bridge|ssl_error|unknown)"', src))
     errors = json.loads((BASE / file).read_text())["config"]["error"]
-    missing = {k for k in used if k in {"invalid_url", "not_chaptarr", "not_komga", "not_tolino_bridge", "ssl_error", "unknown"} or k.endswith(("_cannot_connect", "_invalid_auth", "_missing", "_required"))} - set(errors)
+    missing = {k for k in used if k in {"invalid_url", "not_chaptarr", "not_komga", "not_mylar", "not_tolino_bridge", "ssl_error", "unknown"} or k.endswith(("_cannot_connect", "_invalid_auth", "_missing", "_required"))} - set(errors)
     assert not missing, f"{file}: untranslated errors {missing}"
 
 

@@ -21,6 +21,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import ChaptarrClient, TolinoBridgeClient, UpstreamError, get_config
 from .komga_policy import komga_allowed
+from .mylar_policy import mylar_request
 from .tolino_send import SendError, async_send_to_tolino
 from .const import (
     CHAPTARR_ALLOWED_COMMANDS,
@@ -32,6 +33,8 @@ from .const import (
     CONF_DEBUG_LOGGING,
     CONF_KOMGA_API_KEY,
     CONF_KOMGA_URL,
+    CONF_MYLAR_API_KEY,
+    CONF_MYLAR_URL,
     CONF_VERIFY_SSL,
     DOMAIN,
     PASSTHROUGH_REQUEST_HEADERS,
@@ -215,6 +218,53 @@ class KomgaProxyView(_ProxyBase):
             return web.json_response({"error": f"{method} /{path} is not available through Home Assistant"}, status=403)
         # Page images are small, but a book can be hundreds of them: stream, bound only the connect phase.
         return await self._stream(request, method, f"{base}/api/{path.strip('/')}", {"X-API-Key": key}, cfg, 60)
+
+
+class MylarProxyView(_ProxyBase):
+    """/api/books/mylar/{command} -> Mylar /api?cmd={command}&apikey=..., restricted by mylar_policy.
+
+    Mylar reports errors as HTTP 200 + {"success": false}; the answers are small JSON, so they are buffered."""
+
+    url = "/api/books/mylar/{path:.*}"
+    name = "api:books:mylar"
+    service = "Mylar"
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        super().__init__(hass)
+        self._running: set[tuple] = set()
+
+    async def _route(self, request, path, method, cfg):
+        base = (cfg.get(CONF_MYLAR_URL) or "").rstrip("/")
+        key = cfg.get(CONF_MYLAR_API_KEY) or ""
+        if not base or not key:
+            return web.json_response({"error": "Mylar is not configured"}, status=503)
+        checked = mylar_request(method, path.strip("/"), request.query)
+        if checked is None:
+            return web.json_response({"error": f"{method} /{path} is not available through Home Assistant"}, status=403)
+        params, background = checked
+        session = async_get_clientsession(self._hass, verify_ssl=cfg.get(CONF_VERIFY_SSL, True))
+        url, upstream_params = f"{base}/api", {**params, "apikey": key}
+        if background:
+            task_key = tuple(sorted(params.items()))
+            if task_key not in self._running:  # a second click while the first search runs would only repeat it
+                self._running.add(task_key)
+                self._hass.async_create_background_task(
+                    self._fire(session, url, upstream_params, task_key), f"books_mylar_{params['cmd']}")
+            return web.json_response({"success": True, "data": "queued"}, status=202)
+        async with session.get(url, params=upstream_params, allow_redirects=False,
+                               timeout=aiohttp.ClientTimeout(total=SLOW_REQUEST_TIMEOUT, sock_connect=10)) as upstream:
+            return web.Response(status=upstream.status, body=await upstream.read(),
+                                content_type="application/json", charset="utf-8")
+
+    async def _fire(self, session, url, params, task_key) -> None:
+        try:
+            async with session.get(url, params=params, allow_redirects=False,
+                                   timeout=aiohttp.ClientTimeout(total=1800, sock_connect=10)) as upstream:
+                await upstream.read()
+        except Exception as exc:  # noqa: BLE001 - nobody is waiting for this answer
+            _LOGGER.warning("books Mylar background %s failed: %s", params.get("cmd"), exc)
+        finally:
+            self._running.discard(task_key)
 
 
 def build_book_payload(book: dict, media_type: str, root: dict, search: bool) -> dict:

@@ -29,6 +29,7 @@ from .views import (
     ChaptarrProxyView,
     RescueStatusView,
     KomgaProxyView,
+    MylarProxyView,
     TolinoAutoSendView,
     TolinoSyncView,
     TolinoView,
@@ -51,7 +52,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # HTTP views can't be unregistered; hass.data survives entry reloads, so
     # register them once per HA run.
     if not data.get("views_registered"):
-        for view in (ChaptarrProxyView, ChaptarrMediaView, AbsProxyView, AddBookView, RescueStatusView, TolinoView, TolinoSyncView, TolinoAutoSendView, KomgaProxyView):
+        for view in (ChaptarrProxyView, ChaptarrMediaView, AbsProxyView, AddBookView, RescueStatusView, TolinoView, TolinoSyncView, TolinoAutoSendView, KomgaProxyView, MylarProxyView):
             hass.http.register_view(view(hass))
         data["views_registered"] = True
 
