@@ -1,20 +1,25 @@
-"""Remembers which Audiobookshelf items were already sent to the Tolino Cloud, so a second tap can't create a duplicate."""
+"""Remembers which Audiobookshelf items were already sent to the Tolino Cloud, so a second tap can't create a duplicate.
+One registry per bridge account: every Thalia account has its own cloud (its own deliverable ids)."""
 from __future__ import annotations
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
+from .const import DEFAULT_TOLINO_ACCOUNT, DOMAIN
+
 STORAGE_VERSION = 1
-STORAGE_KEY = "books_tolino_sent"
+STORAGE_KEY = "books_tolino_sent"           # the default account keeps this key: nothing to migrate
 
 
 class SentRegistry:
     """abs_item_id -> {deliverableId, filename, at}. Persisted; the Tolino Cloud stays the source of truth
     (callers verify against the bridge's library before trusting an entry)."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
-        self._store: Store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+    def __init__(self, hass: HomeAssistant, account: str = DEFAULT_TOLINO_ACCOUNT) -> None:
+        self.account = account
+        key = STORAGE_KEY if account == DEFAULT_TOLINO_ACCOUNT else f"{STORAGE_KEY}_{account}"
+        self._store: Store = Store(hass, STORAGE_VERSION, key)
         self.items: dict[str, dict] = {}
 
     async def async_load(self) -> None:
@@ -41,3 +46,17 @@ class SentRegistry:
     def public(self) -> dict[str, dict]:
         """What the card may see: when, never the cloud ids."""
         return {k: {"at": v["at"]} for k, v in self.items.items()}
+
+
+def registry_for(hass: HomeAssistant, account: str = DEFAULT_TOLINO_ACCOUNT) -> SentRegistry:
+    return hass.data[DOMAIN]["registries"][account]
+
+
+async def async_ensure_registry(hass: HomeAssistant, account: str = DEFAULT_TOLINO_ACCOUNT) -> SentRegistry:
+    registries = hass.data[DOMAIN].setdefault("registries", {})
+    if account not in registries:
+        registries[account] = SentRegistry(hass, account)
+        await registries[account].async_load()
+    if account == DEFAULT_TOLINO_ACCOUNT:
+        hass.data[DOMAIN]["tolino_sent"] = registries[account]      # the name the rest of the code (and the tests) know
+    return registries[account]

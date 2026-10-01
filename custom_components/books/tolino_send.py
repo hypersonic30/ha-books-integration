@@ -14,6 +14,8 @@ import aiohttp
 from homeassistant.core import HomeAssistant
 
 from .api import AbsClient, TolinoBridgeClient, UpstreamError
+from .tolino_registry import async_ensure_registry
+from .const import DEFAULT_TOLINO_ACCOUNT
 from .users import tolino_config
 from .const import (
     DOMAIN,
@@ -76,16 +78,16 @@ async def _still_in_cloud(bridge: TolinoBridgeClient, deliverable_id: str) -> bo
 
 
 async def async_send_to_tolino(hass: HomeAssistant, item_id: str, force: bool = False, auto: bool = False,
-                               cfg: dict | None = None) -> dict:
+                               cfg: dict | None = None, account: str = DEFAULT_TOLINO_ACCOUNT) -> dict:
     """Upload the ebook of Audiobookshelf item `item_id`. Raises SendError; returns the result dict on success."""
     if not _ABS_ID.match(item_id):
         raise SendError("bad_request", "abs_item_id is required", 400)
-    cfg = cfg or tolino_config(hass)
-    bridge = TolinoBridgeClient(hass, cfg)
+    cfg = cfg or tolino_config(hass, account)
+    bridge = TolinoBridgeClient(hass, cfg, account)
     if not bridge.configured:
         raise SendError("not_configured", "The Tolino bridge is not configured", 503)
 
-    registry = hass.data[DOMAIN]["tolino_sent"]
+    registry = await async_ensure_registry(hass, account)
     prior = registry.get(item_id)
     if prior and not force:
         if await _still_in_cloud(bridge, prior["deliverableId"]):

@@ -355,7 +355,7 @@ async def test_sent_registry_survives_reload(hass, tolino_entry, hass_client, ai
     aioclient_mock.get(f"{BRIDGE}/status", json={"logged_in": True}, headers=JSON)
     c = await hass_client()
     await _send(c)
-    hass.data[DOMAIN].pop("tolino_sent")                      # what a HA restart does to the in-memory copy
+    hass.data[DOMAIN].pop("tolino_sent"); hass.data[DOMAIN].pop("registries")      # what a HA restart does to the in-memory copy
     assert await hass.config_entries.async_reload(tolino_entry.entry_id)
     await hass.async_block_till_done()
     assert "abc123" in (await (await c.get("/api/books/tolino")).json())["sent"]

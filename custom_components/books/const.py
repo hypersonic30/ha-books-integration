@@ -15,6 +15,8 @@ CONF_MYLAR_API_KEY = "mylar_api_key"
 SUBENTRY_USER = "user"
 CONF_HA_USER = "ha_user"
 CONF_USER_TOLINO = "tolino"          # this person uses the Tolino bridge
+CONF_TOLINO_ACCOUNT = "tolino_account"   # which Thalia account of the bridge (empty = the default account)
+DEFAULT_TOLINO_ACCOUNT = "default"
 CONF_KOMGA_NAME = "komga_name"       # who the key belongs to, shown as a check when saving
 CONF_ABS_NAME = "abs_name"
 WISH_MAX_AGE_SECONDS = 30 * 24 * 3600

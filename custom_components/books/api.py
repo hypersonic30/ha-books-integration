@@ -11,6 +11,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     CONF_ABS_TOKEN,
+    DEFAULT_TOLINO_ACCOUNT,
     CONF_ABS_URL,
     CONF_CHAPTARR_API_KEY,
     CONF_CHAPTARR_URL,
@@ -148,11 +149,14 @@ class KomgaClient(_Client):
 class TolinoBridgeClient(_Client):
     """tolino-bridge (Tolino Cloud upload service) with bearer-token auth."""
 
-    def __init__(self, hass: HomeAssistant, cfg: dict) -> None:
+    def __init__(self, hass: HomeAssistant, cfg: dict, account: str | None = None) -> None:
+        headers = {"Authorization": f"Bearer {cfg.get(CONF_TOLINO_TOKEN, '')}"}
+        if account and account != DEFAULT_TOLINO_ACCOUNT:
+            headers["X-Tolino-Account"] = account           # which Thalia account of the bridge (the default one needs no header)
         super().__init__(
             hass,
             (cfg.get(CONF_TOLINO_URL) or "").rstrip("/"),
-            {"Authorization": f"Bearer {cfg.get(CONF_TOLINO_TOKEN, '')}"},
+            headers,
             cfg.get(CONF_VERIFY_SSL, True),
         )
 

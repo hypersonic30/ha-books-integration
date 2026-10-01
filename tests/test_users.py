@@ -73,6 +73,11 @@ def login(hass, hass_client_no_auth):
     return _login
 
 
+def _bridge_knows(aioclient_mock, *names):
+    """The bridge's /status as the person form sees it: which Thalia accounts exist."""
+    aioclient_mock.get(f"{BRIDGE}/status", json={"logged_in": True, "accounts": list(names) or ["default"]}, headers=JSON)
+
+
 def _last_headers(aioclient_mock):
     return aioclient_mock.mock_calls[-1][3]
 
@@ -271,7 +276,8 @@ async def test_add_a_person_checks_the_accounts_and_shows_who_they_are(hass, pla
     assert plain_entry.data["komga_api_key"] == "k"                                           # the shared account is untouched
 
 
-async def test_the_dropdown_only_offers_people_who_are_not_added_yet(hass, household, cast):
+async def test_the_dropdown_only_offers_people_who_are_not_added_yet(hass, household, cast, aioclient_mock):
+    _bridge_knows(aioclient_mock, "default")
     flow = await hass.config_entries.subentries.async_init((household.entry_id, "user"), context={"source": config_entries.SOURCE_USER})
     options = next(iter(flow["data_schema"].schema.values())).config["options"]
     from .test_translations import PERSON_FIELDS
@@ -307,6 +313,7 @@ async def test_komga_key_without_a_komga_in_the_main_settings(hass, cast, monkey
 
 
 async def test_edit_a_person_keeps_the_user_and_updates_the_rest(hass, household, cast, aioclient_mock):
+    _bridge_knows(aioclient_mock, "default")
     async_mock_service(hass, "notify", "ben_phone")
     aioclient_mock.get(f"{KOMGA}/api/v2/users/me", json={"email": "ben@home", "roles": []}, headers=JSON)
     sub = next(s for s in household.subentries.values() if s.unique_id == cast["ben"].id)
@@ -398,7 +405,7 @@ async def test_turning_the_switch_off_and_on_again_starts_over(hass, household, 
 
 
 @pytest.mark.parametrize("who,extra,errors", [
-    ("cara", {"tolino": True}, {"tolino": "tolino_only_one"}),                                  # Anna already has the bridge
+    ("cara", {"tolino": True}, {"tolino_account": "tolino_account_taken"}),                     # Anna already has the default account
     ("ben", {"auto_send": True}, {"auto_send": "tolino_person_required"}),
     ("ben", {"sync_progress": True}, {"sync_progress": "tolino_person_required"}),
     ("anna", {"sync_progress_write": True, "sync_progress": False}, {"sync_progress_write": "sync_progress_required"}),
@@ -407,6 +414,7 @@ async def test_tolino_rules_in_the_person_form(hass, household, cast, aioclient_
     aioclient_mock.get(f"{KOMGA}/api/v2/users/me", json={"email": "x", "roles": []}, headers=JSON)
     async_mock_service(hass, "notify", "anna_phone")
     async_mock_service(hass, "notify", "ben_phone")
+    _bridge_knows(aioclient_mock, "default")
     base = {"komga_api_key": "", "abs_token": "", "notify_service": "", "tolino": False, "auto_send": False,
             "sync_progress": False, "sync_progress_write": False, "notify_test": False}
     if who == "cara":
@@ -421,7 +429,8 @@ async def test_tolino_rules_in_the_person_form(hass, household, cast, aioclient_
     assert result["type"].value == "form" and result["errors"] == errors
 
 
-async def test_the_one_tolino_person_can_be_edited_without_tripping_the_only_one_rule(hass, household, cast, aioclient_mock):
+async def test_the_tolino_person_can_be_edited_without_tripping_the_account_taken_rule(hass, household, cast, aioclient_mock):
+    _bridge_knows(aioclient_mock, "default")
     aioclient_mock.get(f"{KOMGA}/api/v2/users/me", json={"email": "x", "roles": []}, headers=JSON)
     aioclient_mock.get(f"{ABS}/api/me", json={"username": "anna"}, headers=JSON)
     async_mock_service(hass, "notify", "anna_phone")

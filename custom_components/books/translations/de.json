@@ -147,7 +147,8 @@
             "notify_test": "Testnachricht senden",
             "auto_send": "Neue E-Books automatisch senden",
             "sync_progress": "Lesefortschritt von tolino übernehmen",
-            "sync_progress_write": "Lesefortschritt zu tolino senden"
+            "sync_progress_write": "Lesefortschritt zu tolino senden",
+            "tolino_account": "Tolino-Konto in der Bridge (optional)"
           },
           "data_description": {
             "ha_user": "Wer sich in Home Assistant mit diesem Konto anmeldet.",
@@ -158,7 +159,8 @@
             "notify_test": "Schickt beim Speichern eine Testnachricht an die Benachrichtigung.",
             "auto_send": "Neue E-Books in Audiobookshelf gehen automatisch an dieses tolino. Nur Bücher, die NACH dem Einschalten dazukommen. Braucht „Nutzt die Tolino-Bridge“.",
             "sync_progress": "Übernimmt Leseposition und „Gelesen“ der gesendeten Bücher von tolino in Audiobookshelf (und die Card). Braucht „Nutzt die Tolino-Bridge“.",
-            "sync_progress_write": "Schickt deinen Stand aus Audiobookshelf (was du in der Card liest) zu tolino. Braucht die Option darüber."
+            "sync_progress_write": "Schickt deinen Stand aus Audiobookshelf (was du in der Card liest) zu tolino. Braucht die Option darüber.",
+            "tolino_account": "Name des Thalia-Kontos dieser Person in der Bridge (auf Unraid: deploy.sh account add <name>). Leer = das Standardkonto der Bridge. Jede Person braucht ihr eigenes Konto."
           }
         },
         "reconfigure": {
@@ -172,7 +174,8 @@
             "notify_test": "Testnachricht senden",
             "auto_send": "Neue E-Books automatisch senden",
             "sync_progress": "Lesefortschritt von tolino übernehmen",
-            "sync_progress_write": "Lesefortschritt zu tolino senden"
+            "sync_progress_write": "Lesefortschritt zu tolino senden",
+            "tolino_account": "Tolino-Konto in der Bridge (optional)"
           },
           "data_description": {
             "komga_api_key": "Komga → Kontoeinstellungen → API-Schlüssel dieser Person. Leer = das gemeinsame Konto aus den Haupteinstellungen.",
@@ -182,7 +185,8 @@
             "notify_test": "Schickt beim Speichern eine Testnachricht an die Benachrichtigung.",
             "auto_send": "Neue E-Books in Audiobookshelf gehen automatisch an dieses tolino. Nur Bücher, die NACH dem Einschalten dazukommen. Braucht „Nutzt die Tolino-Bridge“.",
             "sync_progress": "Übernimmt Leseposition und „Gelesen“ der gesendeten Bücher von tolino in Audiobookshelf (und die Card). Braucht „Nutzt die Tolino-Bridge“.",
-            "sync_progress_write": "Schickt deinen Stand aus Audiobookshelf (was du in der Card liest) zu tolino. Braucht die Option darüber."
+            "sync_progress_write": "Schickt deinen Stand aus Audiobookshelf (was du in der Card liest) zu tolino. Braucht die Option darüber.",
+            "tolino_account": "Name des Thalia-Kontos dieser Person in der Bridge (auf Unraid: deploy.sh account add <name>). Leer = das Standardkonto der Bridge. Jede Person braucht ihr eigenes Konto."
           }
         }
       },
@@ -197,8 +201,10 @@
         "tolino_bridge_required": "Dafür muss in den Haupteinstellungen eine tolino-Bridge eingetragen sein",
         "notify_unknown": "Diesen Benachrichtigungsdienst gibt es nicht",
         "tolino_person_required": "Das geht nur mit „Nutzt die Tolino-Bridge“ (bitte auch einschalten)",
-        "tolino_only_one": "Die Bridge hat erst ein tolino-Konto: Es kann nur eine Person sie nutzen (mehrere folgen in einer späteren Version)",
-        "sync_progress_required": "Braucht „Lesefortschritt von tolino übernehmen“ (bitte auch einschalten)"
+        "sync_progress_required": "Braucht „Lesefortschritt von tolino übernehmen“ (bitte auch einschalten)",
+        "tolino_account_unknown": "Dieses Konto kennt die Bridge nicht (auf Unraid: deploy.sh account list bzw. account add)",
+        "tolino_account_taken": "Dieses Konto nutzt schon eine andere Person – jede Person braucht ein eigenes",
+        "tolino_account_invalid": "Name: a–z, 0–9, _ und - (bis 32 Zeichen, keine Großbuchstaben)"
       },
       "abort": {
         "no_users_left": "Alle Home-Assistant-Benutzer sind schon angelegt",

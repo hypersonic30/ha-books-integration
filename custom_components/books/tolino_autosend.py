@@ -23,8 +23,9 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .api import AbsClient, TolinoBridgeClient, UpstreamError
+from .tolino_registry import registry_for
 from .users import tolino_config, tolino_user_id
-from .const import CONF_AUTO_SEND, DEFAULT_AUTO_SEND, DOMAIN, SIGNAL_AUTOSEND_UPDATED, TOLINO_CONVERTIBLE, TOLINO_FORMATS
+from .const import CONF_AUTO_SEND, DEFAULT_AUTO_SEND, DEFAULT_TOLINO_ACCOUNT, DOMAIN, SIGNAL_AUTOSEND_UPDATED, TOLINO_CONVERTIBLE, TOLINO_FORMATS
 from .notify_helper import async_push
 from .tolino_send import SendError, async_send_to_tolino
 
@@ -42,22 +43,23 @@ BRIDGE_DOWN = {"unreachable", "login_backoff", "captcha", "rejected", "2fa", "no
 
 
 class AutoSender:
-    def __init__(self, hass: HomeAssistant) -> None:
+    def __init__(self, hass: HomeAssistant, account: str = DEFAULT_TOLINO_ACCOUNT) -> None:
         self._hass = hass
-        self._store: Store = Store(hass, 1, STORAGE_KEY)
+        self.account = account                      # one job per bridge account (= per person with a Tolino)
+        self._store: Store = Store(hass, 1, STORAGE_KEY if account == DEFAULT_TOLINO_ACCOUNT else f"{STORAGE_KEY}_{account}")
         self.state: dict = {"active": False, "since": 0, "failed": {}}
         self.last_run: dict | None = None
 
     @property
     def enabled(self) -> bool:
-        cfg = tolino_config(self._hass)
-        return bool(cfg.get(CONF_AUTO_SEND, DEFAULT_AUTO_SEND)) and TolinoBridgeClient(self._hass, cfg).configured
+        cfg = tolino_config(self._hass, self.account)
+        return bool(cfg.get(CONF_AUTO_SEND, DEFAULT_AUTO_SEND)) and TolinoBridgeClient(self._hass, cfg, self.account).configured
 
     async def async_start(self) -> None:
         """Load state and note on/off transitions (the entry reloads when the option changes)."""
         self.state.update(await self._store.async_load() or {})
         self.state.setdefault("failed", {})
-        owner = tolino_user_id(self._hass)
+        owner = tolino_user_id(self._hass, self.account)
         if self.enabled and (not self.state.get("active") or self.state.get("owner") != owner):
             self.state.update(active=True, owner=owner, since=int(time.time() * 1000) - SKEW_MARGIN_MS, failed={})
             _LOGGER.info("books: auto-send switched on; only books added from now on are sent")
@@ -100,8 +102,9 @@ class AutoSender:
 
     async def async_run(self) -> dict:
         summary = {"checked": 0, "sent": [], "failed": [], "skipped": []}
-        registry = self._hass.data[DOMAIN]["tolino_sent"]
-        abs_client = AbsClient(self._hass, tolino_config(self._hass))
+        registry = registry_for(self._hass, self.account)
+        cfg = tolino_config(self._hass, self.account)
+        abs_client = AbsClient(self._hass, cfg)
         try:
             items = await self._candidates(abs_client)
         except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
@@ -120,7 +123,7 @@ class AutoSender:
             summary["checked"] += 1
             title = ((item.get("media") or {}).get("metadata") or {}).get("title") or item_id
             try:
-                await async_send_to_tolino(self._hass, item_id, auto=True)
+                await async_send_to_tolino(self._hass, item_id, auto=True, cfg=cfg, account=self.account)
                 summary["sent"].append(item_id)
                 self.state["last_sent"] = {"title": title, "at": dt_util.utcnow().isoformat(), "item_id": item_id}
                 self.state["total_sent"] = int(self.state.get("total_sent", 0)) + 1
@@ -146,5 +149,5 @@ class AutoSender:
         message = f"„{title}“ konnte nicht automatisch an tolino gesendet werden: {exc.message}. Es wird nicht erneut versucht; du kannst es in der Card von Hand senden."
         _LOGGER.warning("books: auto-send gave up on '%s': %s", title, exc)
         persistent_notification.async_create(self._hass, message, title="tolino: automatisches Senden",
-                                             notification_id=f"books_autosend_{item_id}")
+                                             notification_id=f"books_autosend_{item_id}" + ("" if self.account == DEFAULT_TOLINO_ACCOUNT else f"_{self.account}"))
         await async_push(self._hass, "tolino: automatisches Senden", message)

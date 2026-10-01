@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 import aiohttp
 import voluptuous as vol
@@ -19,8 +20,11 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
+from .api import TolinoBridgeClient, UpstreamError
 from .notify_helper import async_push, unknown_targets
 from .const import (
+    CONF_TOLINO_ACCOUNT,
+    DEFAULT_TOLINO_ACCOUNT,
     CONF_ABS_NAME,
     CONF_HA_USER,
     CONF_KOMGA_NAME,
@@ -302,6 +306,9 @@ class BooksConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
 
+_ACCOUNT_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")        # what the bridge accepts as an account name
+
+
 # ── One person: their Home Assistant user and their own accounts ───────────────────────────────────
 
 class UserSubentryFlow(ConfigSubentryFlow):
@@ -321,6 +328,17 @@ class UserSubentryFlow(ConfigSubentryFlow):
         return [SelectOptionDict(value=u.id, label=u.name or u.id)
                 for u in users if u.is_active and not u.system_generated and u.id not in taken]
 
+    async def _bridge_accounts(self, entry) -> list[str] | None:
+        """The Thalia accounts the bridge knows (None: no bridge configured or it does not answer right now)."""
+        if not entry.data.get(CONF_TOLINO_URL):
+            return None
+        try:
+            status = await TolinoBridgeClient(self.hass, entry.data).get("/status")
+        except (UpstreamError, aiohttp.ClientError, TimeoutError):
+            return None
+        names = status.get("accounts") if isinstance(status, dict) else None
+        return [str(n) for n in names] if isinstance(names, list) else [DEFAULT_TOLINO_ACCOUNT]   # an older bridge: just the default
+
     async def _form(self, step: str, user_input: dict | None) -> SubentryFlowResult:
         entry = self._get_entry()
         sub = self._get_reconfigure_subentry() if step == "reconfigure" else None
@@ -336,6 +354,7 @@ class UserSubentryFlow(ConfigSubentryFlow):
                 return self.async_create_entry(title=name, data=data, unique_id=data[CONF_HA_USER])
         shown = {**(sub.data if sub else {}), **(user_input or {})}
         schema: dict = {}
+        accounts = await self._bridge_accounts(entry)
         if sub is None:
             options = await self._people(None)
             if not options:
@@ -347,6 +366,9 @@ class UserSubentryFlow(ConfigSubentryFlow):
             vol.Optional(CONF_ABS_TOKEN, description={"suggested_value": shown.get(CONF_ABS_TOKEN, "")}): _PASSWORD,
             vol.Optional(CONF_NOTIFY_SERVICE, description={"suggested_value": shown.get(CONF_NOTIFY_SERVICE, "")}): str,
             vol.Required(CONF_USER_TOLINO, default=bool(shown.get(CONF_USER_TOLINO, False))): bool,
+            vol.Optional(CONF_TOLINO_ACCOUNT, description={"suggested_value": shown.get(CONF_TOLINO_ACCOUNT, "")}): (
+                SelectSelector(SelectSelectorConfig(options=[SelectOptionDict(value=n, label=n) for n in accounts],
+                                                    custom_value=True, mode="dropdown")) if accounts else str),
             vol.Required(CONF_AUTO_SEND, default=bool(shown.get(CONF_AUTO_SEND, False))): bool,
             vol.Required(CONF_SYNC_PROGRESS, default=bool(shown.get(CONF_SYNC_PROGRESS, False))): bool,
             vol.Required(CONF_SYNC_PROGRESS_WRITE, default=bool(shown.get(CONF_SYNC_PROGRESS_WRITE, False))): bool,
@@ -367,6 +389,7 @@ class UserSubentryFlow(ConfigSubentryFlow):
             CONF_ABS_TOKEN: (user_input.get(CONF_ABS_TOKEN) or "").strip(),
             CONF_NOTIFY_SERVICE: (user_input.get(CONF_NOTIFY_SERVICE) or "").strip(),
             CONF_USER_TOLINO: bool(user_input.get(CONF_USER_TOLINO)),
+            CONF_TOLINO_ACCOUNT: (user_input.get(CONF_TOLINO_ACCOUNT) or "").strip(),
             CONF_AUTO_SEND: bool(user_input.get(CONF_AUTO_SEND)),
             CONF_SYNC_PROGRESS: bool(user_input.get(CONF_SYNC_PROGRESS)),
             CONF_SYNC_PROGRESS_WRITE: bool(user_input.get(CONF_SYNC_PROGRESS_WRITE)),
@@ -389,10 +412,19 @@ class UserSubentryFlow(ConfigSubentryFlow):
             data[CONF_ABS_NAME] = who
         if data[CONF_USER_TOLINO] and not cfg.get(CONF_TOLINO_URL):
             errors[CONF_USER_TOLINO] = "tolino_bridge_required"
-        # The bridge has one Thalia account for now: one Tolino person, and the switches only make sense for them.
+        # Every person with a Tolino has their own Thalia account in the bridge (an empty name = the default account).
         mine = sub.subentry_id if sub else None
-        if data[CONF_USER_TOLINO] and any(o.data.get(CONF_USER_TOLINO) for sid, o in entry.subentries.items() if sid != mine):
-            errors[CONF_USER_TOLINO] = "tolino_only_one"
+        account = data[CONF_TOLINO_ACCOUNT] or DEFAULT_TOLINO_ACCOUNT
+        if data[CONF_USER_TOLINO]:
+            if account != DEFAULT_TOLINO_ACCOUNT and not _ACCOUNT_NAME.match(account):
+                errors[CONF_TOLINO_ACCOUNT] = "tolino_account_invalid"
+            elif any(o.data.get(CONF_USER_TOLINO) and (o.data.get(CONF_TOLINO_ACCOUNT) or DEFAULT_TOLINO_ACCOUNT) == account
+                     for sid, o in entry.subentries.items() if sid != mine):
+                errors[CONF_TOLINO_ACCOUNT] = "tolino_account_taken"
+            elif (known := await self._bridge_accounts(entry)) is not None and account not in known:
+                errors[CONF_TOLINO_ACCOUNT] = "tolino_account_unknown"
+        elif data[CONF_TOLINO_ACCOUNT]:
+            errors[CONF_TOLINO_ACCOUNT] = "tolino_person_required"
         for key in (CONF_AUTO_SEND, CONF_SYNC_PROGRESS, CONF_SYNC_PROGRESS_WRITE):
             if data[key] and not data[CONF_USER_TOLINO]:
                 errors[key] = "tolino_person_required"

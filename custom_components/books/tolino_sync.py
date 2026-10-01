@@ -26,11 +26,13 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util import dt as dt_util
 
 from .api import AbsClient, TolinoBridgeClient, UpstreamError
+from .tolino_registry import registry_for
 from .users import tolino_config
 from .const import (
     CONF_SYNC_PROGRESS,
     CONF_SYNC_PROGRESS_WRITE,
     DEFAULT_SYNC_PROGRESS,
+    DEFAULT_TOLINO_ACCOUNT,
     DEFAULT_SYNC_PROGRESS_WRITE,
     DOMAIN,
     EVENT_PROGRESS_SYNCED,
@@ -47,18 +49,19 @@ _SYNC_ERRORS = (UpstreamError, aiohttp.ClientError, TimeoutError, zipfile.BadZip
 
 
 class ProgressSync:
-    def __init__(self, hass: HomeAssistant) -> None:
+    def __init__(self, hass: HomeAssistant, account: str = DEFAULT_TOLINO_ACCOUNT) -> None:
         self._hass = hass
+        self.account = account                      # one job per bridge account (= per person with a Tolino)
         self.last_run: dict | None = None
 
     @property
     def enabled(self) -> bool:
-        cfg = tolino_config(self._hass)
-        return bool(cfg.get(CONF_SYNC_PROGRESS, DEFAULT_SYNC_PROGRESS)) and TolinoBridgeClient(self._hass, cfg).configured
+        cfg = tolino_config(self._hass, self.account)
+        return bool(cfg.get(CONF_SYNC_PROGRESS, DEFAULT_SYNC_PROGRESS)) and TolinoBridgeClient(self._hass, cfg, self.account).configured
 
     @property
     def write_enabled(self) -> bool:
-        return self.enabled and bool(tolino_config(self._hass).get(CONF_SYNC_PROGRESS_WRITE, DEFAULT_SYNC_PROGRESS_WRITE))
+        return self.enabled and bool(tolino_config(self._hass, self.account).get(CONF_SYNC_PROGRESS_WRITE, DEFAULT_SYNC_PROGRESS_WRITE))
 
     async def async_tick(self, _now=None) -> dict | None:
         if not self.enabled:
@@ -70,13 +73,13 @@ class ProgressSync:
             return None
 
     async def async_sync(self) -> dict:
-        cfg = tolino_config(self._hass)
-        registry = self._hass.data[DOMAIN]["tolino_sent"]
+        cfg = tolino_config(self._hass, self.account)
+        registry = registry_for(self._hass, self.account)
         write = self.write_enabled
         summary = {"checked": 0, "imported": [], "exported": [], "skipped": []}
         if not registry.items:
             return summary
-        bridge = TolinoBridgeClient(self._hass, cfg)
+        bridge = TolinoBridgeClient(self._hass, cfg, self.account)
         try:
             books = (await bridge.get("/progress", timeout=120)).get("books", {})
         except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:

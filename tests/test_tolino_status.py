@@ -50,7 +50,7 @@ async def test_auto_send_sensor_shows_the_last_book_and_survives_a_restart(hass,
     a = entity(hass, AUTO_UID)
     assert a.state == "Das neue Buch" and a.attributes["total_sent"] == 1 and a.attributes["sent_at"]
     # like a Home Assistant restart: the in-memory job is gone, its stored state is not
-    hass.data[DOMAIN].pop("auto_send")
+    hass.data[DOMAIN].pop("auto_send"); hass.data[DOMAIN].pop("jobs")
     entry = hass.config_entries.async_entries(DOMAIN)[0]
     assert await hass.config_entries.async_reload(entry.entry_id); await hass.async_block_till_done()
     a = entity(hass, AUTO_UID)

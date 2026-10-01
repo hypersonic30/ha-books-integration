@@ -22,7 +22,8 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import ChaptarrClient, TolinoBridgeClient, UpstreamError, get_config
 from .komga_policy import komga_allowed
 from .mylar_policy import mylar_request
-from .users import config_for, tolino_allowed, user_of
+from .tolino_registry import async_ensure_registry
+from .users import account_for_user, config_for, tolino_allowed, user_of
 from .tolino_send import SendError, async_send_to_tolino
 from .const import (
     CHAPTARR_ALLOWED_COMMANDS,
@@ -431,7 +432,8 @@ class TolinoView(HomeAssistantView):
         self._hass = hass
 
     async def get(self, request: web.Request) -> web.Response:
-        bridge = TolinoBridgeClient(self._hass, get_config(self._hass))
+        account = account_for_user(self._hass, user_of(request))
+        bridge = TolinoBridgeClient(self._hass, get_config(self._hass), account)
         if not bridge.configured or not tolino_allowed(self._hass, user_of(request)):
             return web.json_response({"enabled": False})
         try:
@@ -446,7 +448,7 @@ class TolinoView(HomeAssistantView):
         return web.json_response({
             "enabled": True, "reachable": True, "logged_in": bool(status.get("logged_in")),
             "error": status.get("last_error"), "login_backoff_s": status.get("login_backoff_s", 0),
-            "sent": self._hass.data[DOMAIN]["tolino_sent"].public(),
+            "sent": (await async_ensure_registry(self._hass, account)).public(),
         })
 
     async def post(self, request: web.Request) -> web.Response:
@@ -461,7 +463,8 @@ class TolinoView(HomeAssistantView):
             return web.json_response({"error": "abs_item_id is required", "code": "bad_request"}, status=400)
         try:
             result = await async_send_to_tolino(self._hass, item_id, force=data.get("force") is True,
-                                                cfg=config_for(self._hass, user_of(request)))
+                                                cfg=config_for(self._hass, user_of(request)),
+                                                account=account_for_user(self._hass, user_of(request)))
         except SendError as exc:
             return web.json_response({"error": exc.message, "code": exc.code, **exc.extra}, status=exc.status)
         result.pop("title", None)
@@ -481,8 +484,8 @@ class TolinoSyncView(HomeAssistantView):
     async def post(self, request: web.Request) -> web.Response:
         if not tolino_allowed(self._hass, user_of(request)):
             return web.json_response({"error": "No Tolino is set up for your account", "code": "no_tolino"}, status=403)
-        sync = self._hass.data[DOMAIN]["progress_sync"]
-        if not sync.enabled:
+        sync = self._hass.data[DOMAIN]["jobs"].get(account_for_user(self._hass, user_of(request)), {}).get("progress_sync")
+        if sync is None or not sync.enabled:
             return web.json_response({"error": "Progress sync is switched off or no Tolino bridge is configured",
                                       "code": "sync_disabled"}, status=409)
         return web.json_response(await sync.async_sync())
@@ -501,8 +504,8 @@ class TolinoAutoSendView(HomeAssistantView):
     async def post(self, request: web.Request) -> web.Response:
         if not tolino_allowed(self._hass, user_of(request)):
             return web.json_response({"error": "No Tolino is set up for your account", "code": "no_tolino"}, status=403)
-        job = self._hass.data[DOMAIN]["auto_send"]
-        if not job.enabled:
+        job = self._hass.data[DOMAIN]["jobs"].get(account_for_user(self._hass, user_of(request)), {}).get("auto_send")
+        if job is None or not job.enabled:
             return web.json_response({"error": "Auto-send is switched off or no Tolino bridge is configured",
                                       "code": "autosend_disabled"}, status=409)
         return web.json_response(await job.async_run())

@@ -31,8 +31,12 @@ class _JobSensor(SensorEntity):
         self.async_write_ha_state()
 
 
+def _jobs(hass: HomeAssistant) -> dict[str, dict]:
+    return hass.data[DOMAIN]["jobs"]
+
+
 class ProgressSyncSensor(_JobSensor):
-    """State: time of the last reading-progress run; attributes: what that run did."""
+    """State: time of the last reading-progress run (of any account); attributes: what the default account's run did, and per account."""
 
     _attr_translation_key = "progress_sync"
     _attr_unique_id = "books_tolino_progress_sync"
@@ -41,19 +45,21 @@ class ProgressSyncSensor(_JobSensor):
 
     @property
     def native_value(self):
-        run = self._hass.data[DOMAIN]["progress_sync"].last_run
-        return run["at"] if run else None
+        runs = [j["progress_sync"].last_run["at"] for j in _jobs(self._hass).values() if j["progress_sync"].last_run]
+        return max(runs) if runs else None
 
     @property
     def extra_state_attributes(self) -> dict:
-        sync = self._hass.data[DOMAIN]["progress_sync"]
-        run = sync.last_run or {}
-        return {"enabled": sync.enabled, "write_enabled": sync.write_enabled, "imported": run.get("imported"),
-                "exported": run.get("exported"), "skipped": run.get("skipped")}
+        def one(sync) -> dict:
+            run = sync.last_run or {}
+            return {"enabled": sync.enabled, "write_enabled": sync.write_enabled, "imported": run.get("imported"),
+                    "exported": run.get("exported"), "skipped": run.get("skipped")}
+        jobs = _jobs(self._hass)
+        return {**one(self._hass.data[DOMAIN]["progress_sync"]), "accounts": {a: one(j["progress_sync"]) for a, j in jobs.items()}}
 
 
 class AutoSendSensor(_JobSensor):
-    """State: title of the book auto-sent last (survives restarts); attributes: when, how many in total."""
+    """State: title of the book auto-sent last (any account; survives restarts); attributes: when, how many in total."""
 
     _attr_translation_key = "auto_send"
     _attr_unique_id = "books_tolino_auto_send"
@@ -61,14 +67,17 @@ class AutoSendSensor(_JobSensor):
 
     @property
     def native_value(self):
-        return (self._hass.data[DOMAIN]["auto_send"].state.get("last_sent") or {}).get("title")
+        sent = [j["auto_send"].state.get("last_sent") for j in _jobs(self._hass).values() if j["auto_send"].state.get("last_sent")]
+        return max(sent, key=lambda s: s.get("at") or "")["title"] if sent else None
 
     @property
     def extra_state_attributes(self) -> dict:
-        job = self._hass.data[DOMAIN]["auto_send"]
-        last = job.state.get("last_sent") or {}
-        return {"enabled": job.enabled, "sent_at": last.get("at"), "total_sent": job.state.get("total_sent", 0),
-                "given_up": len(job.state.get("failed") or {}), "since_ms": job.state.get("since")}
+        def one(job) -> dict:
+            last = job.state.get("last_sent") or {}
+            return {"enabled": job.enabled, "sent_at": last.get("at"), "total_sent": job.state.get("total_sent", 0),
+                    "given_up": len(job.state.get("failed") or {}), "since_ms": job.state.get("since")}
+        jobs = _jobs(self._hass)
+        return {**one(self._hass.data[DOMAIN]["auto_send"]), "accounts": {a: one(j["auto_send"]) for a, j in jobs.items()}}
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:

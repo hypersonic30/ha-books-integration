@@ -147,7 +147,8 @@
             "notify_test": "Send a test message",
             "auto_send": "Send new ebooks automatically",
             "sync_progress": "Take reading progress from tolino",
-            "sync_progress_write": "Send reading progress to tolino"
+            "sync_progress_write": "Send reading progress to tolino",
+            "tolino_account": "Tolino account in the bridge (optional)"
           },
           "data_description": {
             "ha_user": "Whoever signs in to Home Assistant with this account.",
@@ -158,7 +159,8 @@
             "notify_test": "Sends a test message to the notification target when saving.",
             "auto_send": "New ebooks in Audiobookshelf are sent to this tolino automatically. Only books added AFTER you switch it on. Needs \"Uses the Tolino bridge\".",
             "sync_progress": "Imports reading position and 'finished' of the books sent to tolino into Audiobookshelf (and the card). Needs \"Uses the Tolino bridge\".",
-            "sync_progress_write": "Sends your state from Audiobookshelf (what you read in the card) to tolino. Needs the option above."
+            "sync_progress_write": "Sends your state from Audiobookshelf (what you read in the card) to tolino. Needs the option above.",
+            "tolino_account": "Name of this person's Thalia account in the bridge (on Unraid: deploy.sh account add <name>). Empty = the bridge's default account. Every person needs their own account."
           }
         },
         "reconfigure": {
@@ -172,7 +174,8 @@
             "notify_test": "Send a test message",
             "auto_send": "Send new ebooks automatically",
             "sync_progress": "Take reading progress from tolino",
-            "sync_progress_write": "Send reading progress to tolino"
+            "sync_progress_write": "Send reading progress to tolino",
+            "tolino_account": "Tolino account in the bridge (optional)"
           },
           "data_description": {
             "komga_api_key": "Komga -> Account Settings -> API Keys of this person. Empty = the shared account from the main settings.",
@@ -182,7 +185,8 @@
             "notify_test": "Sends a test message to the notification target when saving.",
             "auto_send": "New ebooks in Audiobookshelf are sent to this tolino automatically. Only books added AFTER you switch it on. Needs \"Uses the Tolino bridge\".",
             "sync_progress": "Imports reading position and 'finished' of the books sent to tolino into Audiobookshelf (and the card). Needs \"Uses the Tolino bridge\".",
-            "sync_progress_write": "Sends your state from Audiobookshelf (what you read in the card) to tolino. Needs the option above."
+            "sync_progress_write": "Sends your state from Audiobookshelf (what you read in the card) to tolino. Needs the option above.",
+            "tolino_account": "Name of this person's Thalia account in the bridge (on Unraid: deploy.sh account add <name>). Empty = the bridge's default account. Every person needs their own account."
           }
         }
       },
@@ -197,8 +201,10 @@
         "tolino_bridge_required": "This needs a tolino bridge in the main settings",
         "notify_unknown": "That notification service does not exist",
         "tolino_person_required": "This only works with \"Uses the Tolino bridge\" (switch that on too)",
-        "tolino_only_one": "The bridge has one tolino account for now: only one person can use it (several will follow in a later version)",
-        "sync_progress_required": "Needs \"Take reading progress from tolino\" (switch that on too)"
+        "sync_progress_required": "Needs \"Take reading progress from tolino\" (switch that on too)",
+        "tolino_account_unknown": "The bridge does not know this account (on Unraid: deploy.sh account list / account add)",
+        "tolino_account_taken": "Another person already uses this account - everybody needs their own",
+        "tolino_account_invalid": "Name: a-z, 0-9, _ and - (up to 32 characters, no capitals)"
       },
       "abort": {
         "no_users_left": "Every Home Assistant user is already added",

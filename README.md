@@ -101,10 +101,12 @@ reading the same book overwrites the other's progress. Give everybody their own 
 3. People can be added, edited and removed at any time, no restart. Everybody without an entry keeps the shared account.
 
 What changes for a person with their own accounts: their own reading progress, bookmarks and "Weiterlesen" in the Books and Manga cards;
-**"An tolino senden" only for people marked as Tolino users**. Auto-send, taking reading progress from tolino and sending it to tolino are
-**switches of the person** (the matching switches in the main settings only count while nobody has been added); they run with that person's
-Audiobookshelf account. Until the bridge can serve several Thalia accounts only **one** person can use it; once anybody is added and nobody is
-marked, the bridge features are off; and a push to **their** notify target when a book or manga
+**"An tolino senden" only for people marked as Tolino users**, each with **their own Thalia account in the bridge** (the person's
+"Tolino account" = the name from `deploy.sh account add <name>`; empty = the bridge's default account; the form offers the accounts the bridge
+knows and refuses one that is unknown or already used). Everything runs per account: the list of sent books, auto-send, taking reading progress
+from tolino and sending it to tolino (switches of the person; the matching switches in the main settings only count while nobody has been
+added), the bridge alert ("tolino-Bridge Problem (anna)", to the notify target of the main settings) - each with that person's Audiobookshelf
+account. Once anybody is added and nobody is marked, the bridge features are off; and a push to **their** notify target when a book or manga
 volume **they** asked for is in the library ("Neu in der Bibliothek"; also fired as the event `books_wish_fulfilled`). Books are recognised by title
 and author - a comparison, not a hard link - manga volumes exactly. Nobody is told what the others load.
 

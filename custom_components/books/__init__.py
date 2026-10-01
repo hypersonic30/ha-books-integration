@@ -13,6 +13,7 @@ from .const import (
     AUTO_SEND_INTERVAL_SECONDS,
     WISH_INTERVAL_SECONDS,
     CONF_DEBUG_LOGGING,
+    DEFAULT_TOLINO_ACCOUNT,
     DOMAIN,
     RESCUE_INTERVAL_SECONDS,
     SYNC_INTERVAL_SECONDS,
@@ -20,10 +21,10 @@ from .const import (
 from .api import TolinoBridgeClient
 from .rescue import ImportRescue
 from .tolino_autosend import AutoSender
-from .tolino_registry import SentRegistry
+from .tolino_registry import async_ensure_registry
 from .tolino_sync import ProgressSync
 from .tolino_watch import TolinoWatcher
-from .users import users_from_entry
+from .users import tolino_accounts, users_from_entry
 from .wishes import Wishes
 from .views import (
     AbsProxyView,
@@ -69,20 +70,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_track_time_interval(hass, data["wishes"].async_tick, timedelta(seconds=WISH_INTERVAL_SECONDS))
     )
 
-    if "tolino_sent" not in data:
-        data["tolino_sent"] = SentRegistry(hass)
-        await data["tolino_sent"].async_load()
+    # One progress-sync and one auto-send job per bridge account (= per person with a Tolino); the default account's are
+    # also reachable as data["progress_sync"] / data["auto_send"].
+    await _ensure_jobs(hass)
 
-    data["progress_sync"] = data.get("progress_sync") or ProgressSync(hass)
-    entry.async_on_unload(
-        async_track_time_interval(hass, data["progress_sync"].async_tick, timedelta(seconds=SYNC_INTERVAL_SECONDS))
-    )
+    async def _tick_sync(now=None) -> None:
+        for jobs in list(data["jobs"].values()):
+            await jobs["progress_sync"].async_tick(now)
 
-    data["auto_send"] = data.get("auto_send") or AutoSender(hass)
-    await data["auto_send"].async_start()
-    entry.async_on_unload(
-        async_track_time_interval(hass, data["auto_send"].async_tick, timedelta(seconds=AUTO_SEND_INTERVAL_SECONDS))
-    )
+    async def _tick_auto_send(now=None) -> None:
+        for jobs in list(data["jobs"].values()):
+            await jobs["auto_send"].async_tick(now)
+
+    entry.async_on_unload(async_track_time_interval(hass, _tick_sync, timedelta(seconds=SYNC_INTERVAL_SECONDS)))
+    entry.async_on_unload(async_track_time_interval(hass, _tick_auto_send, timedelta(seconds=AUTO_SEND_INTERVAL_SECONDS)))
 
     rescue = data.get("rescue") or ImportRescue(hass)
     data["rescue"] = rescue
@@ -102,8 +103,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _refresh_users(hass: HomeAssistant, entry: ConfigEntry) -> None:
     data = hass.data.setdefault(DOMAIN, {})
     data["users"] = users_from_entry(entry)
-    if data.get("auto_send"):
-        await data["auto_send"].async_start()      # a switch turned on (or a new Tolino person) starts from now on
+    await _ensure_jobs(hass)                       # a switch turned on, a new Tolino person or account starts from now on
+
+
+async def _ensure_jobs(hass: HomeAssistant) -> None:
+    data = hass.data[DOMAIN]
+    jobs = data.setdefault("jobs", {})
+    for account in dict.fromkeys([DEFAULT_TOLINO_ACCOUNT, *tolino_accounts(hass)]):
+        await async_ensure_registry(hass, account)            # loads it from storage when it is not in memory (after a restart)
+        if account not in jobs:
+            jobs[account] = {"auto_send": AutoSender(hass, account), "progress_sync": ProgressSync(hass, account)}
+            if account == DEFAULT_TOLINO_ACCOUNT:
+                data["auto_send"], data["progress_sync"] = jobs[account]["auto_send"], jobs[account]["progress_sync"]
+        await jobs[account]["auto_send"].async_start()
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

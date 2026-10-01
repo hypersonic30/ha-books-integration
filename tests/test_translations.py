@@ -46,7 +46,7 @@ async def test_home_assistant_loads_the_new_labels(hass, language):
 
 # --- the "person" form (config subentry) ----------------------------------------------------------------
 
-PERSON_FIELDS = ["ha_user", "komga_api_key", "abs_token", "notify_service", "tolino", "auto_send", "sync_progress", "sync_progress_write", "notify_test"]
+PERSON_FIELDS = ["ha_user", "komga_api_key", "abs_token", "notify_service", "tolino", "tolino_account", "auto_send", "sync_progress", "sync_progress_write", "notify_test"]
 
 
 @pytest.mark.parametrize("file", FILES)
@@ -67,7 +67,7 @@ def test_every_error_of_the_person_form_is_translated(file):
     import re
     src = (BASE / "config_flow.py").read_text()
     flow = src[src.index("class UserSubentryFlow"):]
-    used = set(re.findall(r'"((?:komga|abs)_[a-z_]+|not_komga|tolino_bridge_required|tolino_person_required|tolino_only_one|sync_progress_required|notify_unknown)"', flow))
+    used = set(re.findall(r'"((?:komga|abs)_[a-z_]+|not_komga|tolino_bridge_required|tolino_person_required|tolino_account_unknown|tolino_account_taken|tolino_account_invalid|sync_progress_required|notify_unknown)"', flow))
     used |= {"komga_cannot_connect", "abs_cannot_connect", "ssl_error"}                  # produced by the shared _error_key helper
     errors = json.loads((BASE / file).read_text())["config_subentries"]["user"]["error"]
     assert not used - set(errors), f"{file}: untranslated {used - set(errors)}"
