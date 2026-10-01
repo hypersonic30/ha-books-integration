@@ -23,6 +23,8 @@ from .const import (
     CONF_CHAPTARR_API_KEY,
     CONF_CHAPTARR_URL,
     CONF_DEBUG_LOGGING,
+    CONF_KOMGA_API_KEY,
+    CONF_KOMGA_URL,
     CONF_NOTIFY_SERVICE,
     CONF_RESCUE_IMPORTS,
     CONF_SYNC_PROGRESS,
@@ -52,6 +54,8 @@ def _schema(defaults: dict) -> vol.Schema:
         vol.Required(CONF_CHAPTARR_API_KEY, default=defaults.get(CONF_CHAPTARR_API_KEY, "")): _PASSWORD,
         vol.Required(CONF_ABS_URL, default=defaults.get(CONF_ABS_URL, "")): _URL,
         vol.Required(CONF_ABS_TOKEN, default=defaults.get(CONF_ABS_TOKEN, "")): _PASSWORD,
+        vol.Optional(CONF_KOMGA_URL, description={"suggested_value": defaults.get(CONF_KOMGA_URL, "")}): _URL,
+        vol.Optional(CONF_KOMGA_API_KEY, description={"suggested_value": defaults.get(CONF_KOMGA_API_KEY, "")}): _PASSWORD,
         vol.Optional(CONF_TOLINO_URL, description={"suggested_value": defaults.get(CONF_TOLINO_URL, "")}): _URL,
         vol.Optional(CONF_TOLINO_TOKEN, description={"suggested_value": defaults.get(CONF_TOLINO_TOKEN, "")}): _PASSWORD,
         vol.Required(CONF_AUTO_SEND, default=defaults.get(CONF_AUTO_SEND, DEFAULT_AUTO_SEND)): bool,
@@ -147,6 +151,21 @@ async def _check_tolino(hass: HomeAssistant, url: str, token: str, verify_ssl: b
     return None if isinstance(status, dict) and "logged_in" in status else "not_tolino_bridge"
 
 
+async def _check_komga(hass: HomeAssistant, url: str, key: str, verify_ssl: bool) -> str | None:
+    session = async_get_clientsession(hass, verify_ssl=verify_ssl)
+    try:
+        async with session.get(f"{url}/api/v2/users/me", headers={"X-API-Key": key},
+                               timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)) as resp:
+            if resp.status in (401, 403):
+                return "komga_invalid_auth"
+            if resp.status != 200:
+                return "komga_cannot_connect"
+            me = await resp.json(content_type=None)
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        return _error_key("komga", url, err)
+    return None if isinstance(me, dict) and "roles" in me else "not_komga"
+
+
 async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, str]]:
     data = {**data}
     errors: dict[str, str] = {}
@@ -155,6 +174,14 @@ async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, st
         if not data[key].startswith(("http://", "https://")):
             errors[key] = "invalid_url"
     data[CONF_NOTIFY_SERVICE] = (data.get(CONF_NOTIFY_SERVICE) or "").strip()
+    data[CONF_KOMGA_URL] = (data.get(CONF_KOMGA_URL) or "").strip().rstrip("/")
+    data[CONF_KOMGA_API_KEY] = (data.get(CONF_KOMGA_API_KEY) or "").strip()
+    if data[CONF_KOMGA_URL] and not data[CONF_KOMGA_URL].startswith(("http://", "https://")):
+        errors[CONF_KOMGA_URL] = "invalid_url"
+    elif data[CONF_KOMGA_URL] and not data[CONF_KOMGA_API_KEY]:
+        errors[CONF_KOMGA_API_KEY] = "komga_key_missing"
+    elif data[CONF_KOMGA_API_KEY] and not data[CONF_KOMGA_URL]:
+        errors[CONF_KOMGA_URL] = "komga_url_missing"
     data[CONF_TOLINO_URL] = (data.get(CONF_TOLINO_URL) or "").strip().rstrip("/")
     data[CONF_TOLINO_TOKEN] = (data.get(CONF_TOLINO_TOKEN) or "").strip()
     if data[CONF_TOLINO_URL] and not data[CONF_TOLINO_URL].startswith(("http://", "https://")):
@@ -177,6 +204,9 @@ async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, st
         errors[CONF_CHAPTARR_API_KEY if "auth" in err else CONF_CHAPTARR_URL] = err
     if err := await _check_abs(hass, data[CONF_ABS_URL], data[CONF_ABS_TOKEN].strip(), verify):
         errors[CONF_ABS_TOKEN if "auth" in err else CONF_ABS_URL] = err
+    if data[CONF_KOMGA_URL]:
+        if err := await _check_komga(hass, data[CONF_KOMGA_URL], data[CONF_KOMGA_API_KEY], verify):
+            errors[CONF_KOMGA_API_KEY if "auth" in err else CONF_KOMGA_URL] = err
     if data[CONF_TOLINO_URL]:
         if err := await _check_tolino(hass, data[CONF_TOLINO_URL], data[CONF_TOLINO_TOKEN], verify):
             errors[CONF_TOLINO_TOKEN if "auth" in err else CONF_TOLINO_URL] = err

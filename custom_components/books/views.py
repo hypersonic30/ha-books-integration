@@ -20,6 +20,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import ChaptarrClient, TolinoBridgeClient, UpstreamError, get_config
+from .komga_policy import komga_allowed
 from .tolino_send import SendError, async_send_to_tolino
 from .const import (
     CHAPTARR_ALLOWED_COMMANDS,
@@ -29,6 +30,8 @@ from .const import (
     CONF_CHAPTARR_API_KEY,
     CONF_CHAPTARR_URL,
     CONF_DEBUG_LOGGING,
+    CONF_KOMGA_API_KEY,
+    CONF_KOMGA_URL,
     CONF_VERIFY_SSL,
     DOMAIN,
     PASSTHROUGH_REQUEST_HEADERS,
@@ -68,7 +71,7 @@ class _ProxyBase(HomeAssistantView):
         cfg = get_config(self._hass)
         try:
             return await self._route(request, path, method, cfg)
-        except aiohttp.ClientConnectorError as exc:
+        except aiohttp.ClientConnectionError as exc:  # refused, unreachable, or dropped mid-request (restart)
             _LOGGER.error("books %s proxy cannot connect [%s %s]: %s", self.service, method, path, exc)
             return web.json_response({"error": f"Cannot connect to {self.service}: {exc}"}, status=503)
         except TimeoutError:
@@ -194,6 +197,24 @@ class AbsProxyView(_ProxyBase):
             request, method, f"{base}/api/{path}",
             {"Authorization": f"Bearer {cfg.get(CONF_ABS_TOKEN, '')}"}, cfg, timeout,
         )
+
+
+class KomgaProxyView(_ProxyBase):
+    """/api/books/komga/{path} -> Komga /api/{path}, restricted by komga_policy (reading, progress, rescan)."""
+
+    url = "/api/books/komga/{path:.*}"
+    name = "api:books:komga"
+    service = "Komga"
+
+    async def _route(self, request, path, method, cfg):
+        base = (cfg.get(CONF_KOMGA_URL) or "").rstrip("/")
+        key = cfg.get(CONF_KOMGA_API_KEY) or ""
+        if not base or not key:
+            return web.json_response({"error": "Komga is not configured"}, status=503)
+        if not komga_allowed(method, path):
+            return web.json_response({"error": f"{method} /{path} is not available through Home Assistant"}, status=403)
+        # Page images are small, but a book can be hundreds of them: stream, bound only the connect phase.
+        return await self._stream(request, method, f"{base}/api/{path.strip('/')}", {"X-API-Key": key}, cfg, 60)
 
 
 def build_book_payload(book: dict, media_type: str, root: dict, search: bool) -> dict:

@@ -14,6 +14,8 @@ from .const import (
     CONF_ABS_URL,
     CONF_CHAPTARR_API_KEY,
     CONF_CHAPTARR_URL,
+    CONF_KOMGA_API_KEY,
+    CONF_KOMGA_URL,
     CONF_TOLINO_TOKEN,
     CONF_TOLINO_URL,
     CONF_VERIFY_SSL,
@@ -125,6 +127,22 @@ class AbsClient(_Client):
             {"Authorization": f"Bearer {cfg.get(CONF_ABS_TOKEN, '')}"},
             cfg.get(CONF_VERIFY_SSL, True),
         )
+
+
+class KomgaClient(_Client):
+    """Komga /api with an API key (header X-API-Key)."""
+
+    def __init__(self, hass: HomeAssistant, cfg: dict) -> None:
+        super().__init__(
+            hass,
+            f"{(cfg.get(CONF_KOMGA_URL) or '').rstrip('/')}/api",
+            {"X-API-Key": cfg.get(CONF_KOMGA_API_KEY) or ""},
+            cfg.get(CONF_VERIFY_SSL, True),
+        )
+
+    @property
+    def configured(self) -> bool:
+        return self.base_url != "/api" and bool(self.headers["X-API-Key"])
 
 
 class TolinoBridgeClient(_Client):

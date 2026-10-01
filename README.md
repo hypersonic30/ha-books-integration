@@ -72,6 +72,13 @@ Copy `custom_components/books/` into `config/custom_components/` and restart Hom
 
 Use the events for automations, e.g. a push "New book is on your tolino – sync the app" when `books_tolino_sent` fires with `auto: true`.
 
+### Manga (optional): Komga
+
+With a [Komga](https://komga.org) URL and API key in the settings, `/api/books/komga/{path}` proxies Komga for the manga card.
+It is a strict allow-list — reading (libraries, series, books, page images, thumbnails), reading progress, search and "rescan a
+library" — and refuses everything else (users, API keys, library settings, original-file downloads). The API key never reaches
+the browser; use a dedicated Komga user **without** admin rights. Page images work as `<img src>` through Home Assistant's signed paths.
+
 ## Setup
 
 Settings → Devices & Services → Add Integration → **Books**:
