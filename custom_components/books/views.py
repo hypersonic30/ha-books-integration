@@ -220,6 +220,19 @@ class KomgaProxyView(_ProxyBase):
         return await self._stream(request, method, f"{base}/api/{path.strip('/')}", {"X-API-Key": key}, cfg, 60)
 
 
+def _json_body(raw: bytes, status: int) -> bytes:
+    """Mylar answers some commands (queueIssue, unqueueIssue, ...) with the plain text "OK", and errors as plain text.
+    The card parses every answer as JSON, so give it the same envelope Mylar uses everywhere else."""
+    try:
+        json.loads(raw)
+        return raw
+    except ValueError:
+        text = raw.decode("utf-8", "replace").strip()
+        if status < 400:
+            return json.dumps({"success": True, "data": text}).encode()
+        return json.dumps({"success": False, "error": {"code": status, "message": text[:300] or f"HTTP {status}"}}).encode()
+
+
 class MylarProxyView(_ProxyBase):
     """/api/books/mylar/{command} -> Mylar /api?cmd={command}&apikey=..., restricted by mylar_policy.
 
@@ -253,7 +266,7 @@ class MylarProxyView(_ProxyBase):
             return web.json_response({"success": True, "data": "queued"}, status=202)
         async with session.get(url, params=upstream_params, allow_redirects=False,
                                timeout=aiohttp.ClientTimeout(total=SLOW_REQUEST_TIMEOUT, sock_connect=10)) as upstream:
-            return web.Response(status=upstream.status, body=await upstream.read(),
+            return web.Response(status=upstream.status, body=_json_body(await upstream.read(), upstream.status),
                                 content_type="application/json", charset="utf-8")
 
     async def _fire(self, session, url, params, task_key) -> None:

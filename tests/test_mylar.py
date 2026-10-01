@@ -205,3 +205,26 @@ async def test_flow_mylar_errors(hass, aioclient_mock, extra, status, body, erro
     aioclient_mock.get(f"{MYLAR}/api", status=status, json=body, headers=JSON)
     result = await _run(hass, extra)
     assert result["type"] is FlowResultType.FORM and result["errors"] == errors
+
+
+# --- Mylar's plain-text answers ("OK") must reach the card as JSON ----------------------------------
+
+async def test_plain_text_ok_becomes_json(hass, mylar_entry, hass_client, aioclient_mock):
+    """unqueueIssue answers the text 'OK' (no JSON): the card's callApi failed with 'unable to parse json response'."""
+    aioclient_mock.get(f"{MYLAR}/api", text="OK")
+    resp = await (await hass_client()).post("/api/books/mylar/unqueueIssue?id=448514")
+    assert resp.status == 200 and resp.headers["Content-Type"].startswith("application/json")
+    assert await resp.json() == {"success": True, "data": "OK"}
+
+
+async def test_plain_text_error_becomes_a_json_error(hass, mylar_entry, hass_client, aioclient_mock):
+    aioclient_mock.get(f"{MYLAR}/api", text="Internal Server Error", status=500)
+    resp = await (await hass_client()).post("/api/books/mylar/addComic?id=1")
+    body = await resp.json()
+    assert resp.status == 500 and body["success"] is False and "Internal Server Error" in body["error"]["message"]
+
+
+async def test_real_json_is_passed_through_untouched(hass, mylar_entry, hass_client, aioclient_mock):
+    aioclient_mock.get(f"{MYLAR}/api", json=[{"name": "x"}], headers=JSON)
+    resp = await (await hass_client()).get("/api/books/mylar/findComic?name=x")
+    assert await resp.json() == [{"name": "x"}]
