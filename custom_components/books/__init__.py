@@ -4,9 +4,12 @@ from __future__ import annotations
 from datetime import timedelta
 import logging
 
+import voluptuous as vol
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
@@ -21,6 +24,7 @@ from .const import (
 from .api import TolinoBridgeClient
 from .rescue import ImportRescue
 from .tolino_autosend import AutoSender
+from .tolino_move import async_move_account
 from .tolino_registry import async_ensure_registry
 from .tolino_sync import ProgressSync
 from .tolino_watch import TolinoWatcher
@@ -40,9 +44,24 @@ from .views import (
 )
 
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+SERVICE_MOVE_TOLINO_ACCOUNT = "move_tolino_account"
 
 # Setting the level here also governs the submodules (they inherit it).
 _PKG_LOGGER = logging.getLogger(__package__)
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    async def _move(call: ServiceCall) -> dict:
+        moved = await async_move_account(hass, call.data["from_account"], call.data["to_account"])
+        return {"moved_books": moved}
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_MOVE_TOLINO_ACCOUNT, _move,
+        schema=vol.Schema({vol.Optional("from_account", default=DEFAULT_TOLINO_ACCOUNT): cv.string,
+                           vol.Required("to_account"): cv.string}),
+        supports_response=SupportsResponse.OPTIONAL)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

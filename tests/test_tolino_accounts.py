@@ -394,3 +394,101 @@ async def test_nobody_uses_the_bridge_means_nothing_to_watch(hass, aioclient_moc
     aioclient_mock.mock_calls.clear()
     await watcher.async_refresh(); await hass.async_block_till_done()
     assert watcher.data["problem"] is False and watcher.data["accounts"] == {} and aioclient_mock.call_count == 0
+
+
+# --- renaming the default account: books.move_tolino_account ----------------------------------------------------------------
+
+from homeassistant.exceptions import ServiceValidationError
+
+
+async def _hand_over_default_to(hass, entry, users, name):
+    """What the user does after `deploy.sh account rename-default NAME`: enter the name at the person."""
+    anna = next(s for s in entry.subentries.values() if s.unique_id == users["anna"].id)
+    hass.config_entries.async_update_subentry(entry, anna, data={**anna.data, "tolino_account": name})
+    await hass.async_block_till_done()
+
+
+async def _move(hass, to="anna", **extra):
+    return await hass.services.async_call(DOMAIN, "move_tolino_account", {"to_account": to, **extra}, blocking=True, return_response=True)
+
+
+async def test_the_action_carries_the_sent_books_and_auto_send_state_to_the_new_name(hass, family):
+    users, entry = family
+    anna_sub = next(s for s in entry.subentries.values() if s.unique_id == users["anna"].id)
+    hass.config_entries.async_update_subentry(entry, anna_sub, data={**anna_sub.data, "auto_send": True})
+    await hass.async_block_till_done()
+    default_job = hass.data[DOMAIN]["jobs"]["default"]["auto_send"]
+    await registry_for(hass, "default").async_set("b1", "d1", "b1.epub")
+    await registry_for(hass, "default").async_set("b2", "d2", "b2.epub")
+    default_job.state.update(since=111, total_sent=7, last_sent={"title": "Zuletzt", "at": "2026-10-01T10:00:00+00:00"}, failed={"x": {"error": "too_large"}})
+    await default_job._store.async_save(default_job.state)
+    await _hand_over_default_to(hass, entry, users, "anna")
+
+    assert await _move(hass) == {"moved_books": 2}
+    assert set(registry_for(hass, "anna").items) == {"b1", "b2"} and registry_for(hass, "anna").get("b1")["deliverableId"] == "d1"
+    assert registry_for(hass, "default").items == {}
+    assert await registry_for(hass, "anna")._store.async_load() == registry_for(hass, "anna").items      # persisted
+    assert await registry_for(hass, "default")._store.async_load() == {}
+    new_job = hass.data[DOMAIN]["jobs"]["anna"]["auto_send"]
+    assert new_job.state["since"] == 111 and new_job.state["total_sent"] == 7 and new_job.state["last_sent"]["title"] == "Zuletzt"
+    assert new_job.state["failed"] == {"x": {"error": "too_large"}}
+    assert new_job.state["owner"] == users["anna"].id                                                     # the owner is the person, not the old state's
+    assert default_job.state["since"] == 0 and not default_job.state.get("last_sent") and default_job.state["active"] is False
+
+
+async def test_after_the_move_a_sent_book_is_still_known_as_sent(hass, family, login, aioclient_mock):
+    users, entry = family
+    await registry_for(hass, "default").async_set("abc123", "d-old", "abc123.epub")
+    await _hand_over_default_to(hass, entry, users, "anna")
+    await _move(hass)
+    bridge_status(aioclient_mock, ("anna", "cara"))
+    aioclient_mock.get(f"{BRIDGE}/library", json={"books": [{"deliverableId": "d-old"}]}, headers=JSON)
+    item(aioclient_mock)
+    upload_returns(aioclient_mock, {"anna": "d-new", "cara": "d-cara"})
+    r = await (await login(users["anna"])).post("/api/books/tolino", json={"abs_item_id": "abc123"})
+    assert r.status == 409 and (await r.json())["code"] == "already_sent"                                  # no duplicate in her cloud
+    assert not calls_to(aioclient_mock, "/upload")
+    assert calls_to(aioclient_mock, "/library")[0][3]["X-Tolino-Account"] == "anna"                       # and it asks the renamed account
+
+
+@pytest.mark.parametrize("target,prepare,message", [
+    ("anna", "same", "same"),                                                       # old and new name equal
+    ("nobody", None, "No person uses"),                                             # no person has entered that account yet
+])
+async def test_the_action_refuses_nonsense(hass, family, target, prepare, message):
+    users, entry = family
+    with pytest.raises(ServiceValidationError, match=message):
+        await _move(hass, to=target, **({"from_account": "anna"} if prepare == "same" else {}))
+
+
+async def test_the_action_never_overwrites_an_account_that_already_has_books(hass, family):
+    users, entry = family
+    await registry_for(hass, "default").async_set("b1", "d1", "b1.epub")
+    await _hand_over_default_to(hass, entry, users, "anna")
+    await registry_for(hass, "anna").async_set("other", "dx", "o.epub")
+    with pytest.raises(ServiceValidationError, match="already has 1 sent books"):
+        await _move(hass)
+    assert set(registry_for(hass, "default").items) == {"b1"} and set(registry_for(hass, "anna").items) == {"other"}      # untouched
+
+
+async def test_moving_an_empty_account_is_harmless(hass, family):
+    users, entry = family
+    await _hand_over_default_to(hass, entry, users, "anna")
+    assert await _move(hass) == {"moved_books": 0}
+
+
+async def test_the_default_name_is_the_default_source(hass, family):
+    users, entry = family
+    await registry_for(hass, "default").async_set("b1", "d1", "b1.epub")
+    await _hand_over_default_to(hass, entry, users, "anna")
+    assert (await _move(hass, to="anna", from_account="default")) == {"moved_books": 1}
+
+
+def test_the_action_has_its_texts_and_services_yaml():
+    import json
+    from pathlib import Path
+    base = Path(__file__).parent.parent / "custom_components" / "books"
+    assert "move_tolino_account" in (base / "services.yaml").read_text()
+    for f in ("strings.json", "translations/en.json", "translations/de.json"):
+        svc = json.loads((base / f).read_text())["services"]["move_tolino_account"]
+        assert svc["name"] and svc["description"] and all(svc["fields"][k]["name"] and svc["fields"][k]["description"] for k in ("to_account", "from_account")), f

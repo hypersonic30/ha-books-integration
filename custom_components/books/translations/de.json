@@ -212,5 +212,21 @@
         "reconfigure_successful": "Gespeichert"
       }
     }
+  },
+  "services": {
+    "move_tolino_account": {
+      "name": "Tolino-Konto umbenennen",
+      "description": "Überträgt die Liste der gesendeten Bücher und den Auto-Senden-Stand von einem Tolino-Konto auf einen neuen Namen. Einmalig nach „deploy.sh account rename-default NAME“ auf Unraid; der neue Name muss bei der Person schon als Tolino-Konto eingetragen sein.",
+      "fields": {
+        "to_account": {
+          "name": "Neuer Kontoname",
+          "description": "Der Name aus der Bridge, z. B. anna."
+        },
+        "from_account": {
+          "name": "Alter Kontoname",
+          "description": "Meist default (das ursprüngliche Konto der Bridge)."
+        }
+      }
+    }
   }
 }

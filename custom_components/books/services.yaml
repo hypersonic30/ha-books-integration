@@ -1,0 +1,13 @@
+move_tolino_account:
+  fields:
+    to_account:
+      required: true
+      example: anna
+      selector:
+        text:
+    from_account:
+      required: false
+      default: default
+      example: default
+      selector:
+        text:

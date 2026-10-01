@@ -120,6 +120,13 @@ account. Once anybody is added and nobody is marked, the bridge features are off
 volume **they** asked for is in the library ("Neu in der Bibliothek"; also fired as the event `books_wish_fulfilled`). Books are recognised by title
 and author - a comparison, not a hard link - manga volumes exactly. Nobody is told what the others load.
 
+#### Renaming the bridge's original account
+
+The bridge's first account is called `default`. To give it the person's name instead, run `deploy.sh account rename-default NAME` on the
+server (the login is kept), enter NAME as that person's *Tolino account*, then call the action **`books.move_tolino_account`**
+(`to_account: NAME`, `from_account: default`) once: it carries the list of sent books and the auto-send state over, so nothing is sent twice
+(it refuses to overwrite an account that already has books).
+
 ## Setup
 
 Settings → Devices & Services → Add Integration → **Books**:
