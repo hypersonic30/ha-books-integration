@@ -96,3 +96,50 @@ def test_no_text_looks_like_html(file):
             yield path, node
     bad = list(walk(json.loads((BASE / file).read_text())))
     assert not bad, f"{file}: {bad}"
+
+
+# --- the Thalia accounts form (config subentry type "tolino_account") ------------------------------------------------------------
+
+ACCOUNT_STEPS = {"create": ["name", "thalia_user", "thalia_password"], "rename": ["to"], "remove": ["account", "confirm"]}
+ACCOUNT_PLACEHOLDERS = {"create": {"detail"}, "rename": {"person", "detail"}, "remove": {"detail"}}
+
+
+@pytest.mark.parametrize("file", FILES)
+def test_the_account_form_is_fully_translated(file):
+    import re
+    sub = json.loads((BASE / file).read_text())["config_subentries"]["tolino_account"]
+    assert sub["entry_type"] and sub["initiate_flow"]["user"]
+    assert set(sub["step"]["user"]["menu_options"]) == {"create", "rename", "remove"} and all(sub["step"]["user"]["menu_options"].values())
+    for step, fields in ACCOUNT_STEPS.items():
+        section = sub["step"][step]
+        assert section["title"] and section["description"], f"{file} {step}"
+        assert set(section["data"]) == set(fields) == set(section["data_description"]), f"{file} {step}"
+        assert all(section["data"].values()) and all(section["data_description"].values())
+        used = set(re.findall(r"\{(\w+)\}", section["description"]))
+        assert used <= ACCOUNT_PLACEHOLDERS[step], f"{file} {step}: unknown placeholder {used - ACCOUNT_PLACEHOLDERS[step]}"
+    for key, wanted in (("account_created", {"name"}), ("account_renamed", {"name", "books"}), ("account_removed", {"name"})):
+        assert set(re.findall(r"\{(\w+)\}", sub["abort"][key])) == wanted, f"{file} {key}"
+
+
+@pytest.mark.parametrize("file", FILES)
+def test_every_error_and_abort_of_the_account_form_is_translated(file):
+    import re
+    src = (BASE / "config_flow.py").read_text()
+    flow = src[src.index("class TolinoAccountFlow"):]
+    from custom_components.books.config_flow import _LOGIN_ERRORS
+    used = set(re.findall(r'errors\[[^\]]+\] = "([a-z_]+)"', flow)) | set(_LOGIN_ERRORS.values()) | {"login_failed", "bridge_unreachable"}
+    aborts = set(re.findall(r'async_abort\(reason="([a-z_]+)"', flow))
+    sub = json.loads((BASE / file).read_text())["config_subentries"]["tolino_account"]
+    assert not used - set(sub["error"]), f"{file}: untranslated errors {used - set(sub['error'])}"
+    assert not aborts - set(sub["abort"]), f"{file}: untranslated aborts {aborts - set(sub['abort'])}"
+
+
+@pytest.mark.parametrize("language", ["en", "de"])
+async def test_home_assistant_loads_the_account_form_texts(hass, language):
+    loaded = await async_get_translations(hass, language, "config_subentries", {DOMAIN})
+    base = f"component.{DOMAIN}.config_subentries.tolino_account"
+    for step, fields in ACCOUNT_STEPS.items():
+        for field in fields:
+            assert loaded.get(f"{base}.step.{step}.data.{field}"), f"{language}: {step}.{field}"
+    for option in ("create", "rename", "remove"):
+        assert loaded.get(f"{base}.step.user.menu_options.{option}"), f"{language}: menu {option}"

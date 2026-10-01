@@ -10,7 +10,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
@@ -24,12 +23,10 @@ from .const import (
 )
 from .api import TolinoBridgeClient
 from .rescue import ImportRescue
-from .tolino_autosend import AutoSender
+from .jobs import async_ensure_jobs, async_refresh_users
 from .tolino_move import async_move_account
-from .tolino_registry import async_ensure_registry
-from .tolino_sync import ProgressSync
 from .tolino_watch import TolinoWatcher
-from .users import tolino_accounts, users_from_entry
+from .users import users_from_entry
 from .wishes import Wishes
 from .views import (
     AbsProxyView,
@@ -46,7 +43,6 @@ from .views import (
 
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-ISSUE_NO_PERSON = "no_person"
 SERVICE_MOVE_TOLINO_ACCOUNT = "move_tolino_account"
 
 # Setting the level here also governs the submodules (they inherit it).
@@ -73,7 +69,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     data["config"] = dict(entry.data)
     data["users"] = users_from_entry(entry)
     # People are added/changed/removed without a reload: everything reads data["users"] live.
-    entry.async_on_unload(entry.add_update_listener(_refresh_users))
+    entry.async_on_unload(entry.add_update_listener(async_refresh_users))
 
     _PKG_LOGGER.setLevel(logging.DEBUG if entry.data.get(CONF_DEBUG_LOGGING) else logging.NOTSET)
 
@@ -93,7 +89,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # One progress-sync and one auto-send job per bridge account (= per person with a Tolino); the default account's are
     # also reachable as data["progress_sync"] / data["auto_send"].
-    await _ensure_jobs(hass)
+    await async_ensure_jobs(hass)
 
     async def _tick_sync(now=None) -> None:
         for jobs in list(data["jobs"].values()):
@@ -119,34 +115,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.async_create_background_task(hass, data["tolino_watcher"].async_refresh(), "books_tolino_first_poll")
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
-
-
-async def _refresh_users(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    data = hass.data.setdefault(DOMAIN, {})
-    data["users"] = users_from_entry(entry)
-    await _ensure_jobs(hass)                       # a switch turned on, a new Tolino person or account starts from now on
-
-
-async def _ensure_jobs(hass: HomeAssistant) -> None:
-    data = hass.data[DOMAIN]
-    jobs = data.setdefault("jobs", {})
-    for account in tolino_accounts(hass):
-        await async_ensure_registry(hass, account)            # loads it from storage when it is not in memory (after a restart)
-        if account not in jobs:
-            jobs[account] = {"auto_send": AutoSender(hass, account), "progress_sync": ProgressSync(hass, account)}
-        await jobs[account]["auto_send"].async_start()
-    for gone in set(jobs) - set(tolino_accounts(hass)):             # nobody uses this account any more: stop it cleanly
-        await jobs[gone]["auto_send"].async_start()                 # (disabled now -> marks it inactive)
-    _check_people_issue(hass)
-
-
-def _check_people_issue(hass: HomeAssistant) -> None:
-    """A repair hint while nobody has been added: without a person the cards have no access."""
-    if hass.data[DOMAIN].get("users"):
-        ir.async_delete_issue(hass, DOMAIN, ISSUE_NO_PERSON)
-    else:
-        ir.async_create_issue(hass, DOMAIN, ISSUE_NO_PERSON, is_fixable=False, severity=ir.IssueSeverity.WARNING,
-                              translation_key=ISSUE_NO_PERSON)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

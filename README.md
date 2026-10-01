@@ -127,12 +127,21 @@ switches of the person), each with that person's Audiobookshelf account.
   `books_wish_fulfilled`). Books are recognised by title and author - a comparison, not a hard link - manga volumes exactly. Nobody is told
   what the others load.
 
-#### Renaming the bridge's original account
+#### Thalia accounts from Home Assistant
 
-The bridge's first account is called `default`. To give it the person's name instead, run `deploy.sh account rename-default NAME` on the
-server (the login is kept), enter NAME as that person's *Tolino account*, then call the action **`books.move_tolino_account`**
-(`to_account: NAME`, `from_account: default`) once: it carries the list of sent books and the auto-send state over, so nothing is sent twice
-(it refuses to overwrite an account that already has books).
+Settings → Devices & Services → Books → **Manage Thalia accounts** (needs tolino-bridge ≥ 0.7.0). A menu offers what makes sense:
+
+- **Create a new account** - name, Thalia e-mail and password. The password is sent **once**, in clear text over HTTP on your network, to the bridge and
+  is not stored in Home Assistant (not in the config, not in a log, not in the logbook); the bridge stores it in its own account directory, logs in
+  right away and removes the account again if the login fails (captcha, wrong password, no device yet), so a retry starts clean. An existing name is
+  refused, nothing is ever overwritten. Afterwards enter the name as the person's *Tolino account*.
+- **Rename the "default" account** - gives the bridge's original account the name of its person in one step: the bridge moves credentials, session and
+  Chrome profile (the login is kept), the person using it is switched to the new name and the list of sent books follows.
+- **Remove an account** - deletes credentials, session and profile in the bridge and the matching list of sent books here; refused while a person
+  still uses the account. The Thalia account itself is untouched.
+
+The terminal still works (`deploy.sh account add|list|remove|rename-default`), and the action **`books.move_tolino_account`** carries the list of sent books
+over to a new name if you rename by hand.
 
 ## Setup
 

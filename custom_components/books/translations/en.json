@@ -197,6 +197,80 @@
         "already_configured": "This person is already added",
         "reconfigure_successful": "Saved"
       }
+    },
+    "tolino_account": {
+      "entry_type": "Thalia account",
+      "initiate_flow": {
+        "user": "Manage Thalia accounts"
+      },
+      "step": {
+        "user": {
+          "title": "Manage Thalia accounts",
+          "description": "The tolino bridge's Thalia accounts, one per person. Nothing is stored in Home Assistant here; the credentials live in the bridge only.",
+          "menu_options": {
+            "create": "Create a new account",
+            "rename": "Rename the \"default\" account",
+            "remove": "Remove an account"
+          }
+        },
+        "create": {
+          "title": "Create a new Thalia account",
+          "description": "The person must have signed in once at webreader.mytolino.com. The password is sent **once** in clear text (HTTP on your home network) to the bridge and is not stored here; the bridge logs in right away (up to a minute). If the login fails the account is removed again. {detail}",
+          "data": {
+            "name": "Account name",
+            "thalia_user": "Thalia e-mail",
+            "thalia_password": "Thalia password"
+          },
+          "data_description": {
+            "name": "a-z, 0-9, _ and - (up to 32 characters, no capitals), e.g. the first name. You then enter this name at the person as their Tolino account.",
+            "thalia_user": "The e-mail address of this person's Thalia account.",
+            "thalia_password": "The password of the Thalia account."
+          }
+        },
+        "rename": {
+          "title": "Rename the \"default\" account",
+          "description": "Gives the original account the name of its person. The login is kept (no new login). Affected person: {person}. They are switched to the new name and keep their list of sent books. {detail}",
+          "data": {
+            "to": "New account name"
+          },
+          "data_description": {
+            "to": "a-z, 0-9, _ and - (up to 32 characters, no capitals), e.g. the first name."
+          }
+        },
+        "remove": {
+          "title": "Remove an account",
+          "description": "Deletes the account's credentials, session and Chrome profile in the bridge and the matching list of sent books here. The Thalia account itself is untouched. An account that a person still uses cannot be removed. {detail}",
+          "data": {
+            "account": "Account",
+            "confirm": "Yes, remove this account"
+          },
+          "data_description": {
+            "account": "The account to remove.",
+            "confirm": "Confirm to be safe."
+          }
+        }
+      },
+      "error": {
+        "name_invalid": "Name: a-z, 0-9, _ and - (up to 32 characters, no capitals, not \"default\")",
+        "name_taken": "The bridge already has an account with this name",
+        "credentials_missing": "Please enter the e-mail and the password",
+        "login_captcha": "Thalia asks for a captcha (bot protection). Try again later.",
+        "login_rejected": "Thalia rejected the credentials (wrong e-mail or password, or two-factor is on)",
+        "login_no_device": "This account has no device yet: sign in once at webreader.mytolino.com",
+        "login_backoff": "The bridge is still waiting after a failed login. Try again later.",
+        "login_failed": "The login failed (details in the bridge log: ./deploy.sh logs)",
+        "bridge_unreachable": "The bridge does not answer",
+        "confirm_required": "Please confirm the removal",
+        "account_in_use": "A person still uses this account: change or remove the person first"
+      },
+      "abort": {
+        "no_bridge": "No tolino bridge is set in the main settings",
+        "bridge_unreachable": "The bridge does not answer",
+        "nothing_to_remove": "There is no account that can be removed (\"default\" can only be renamed)",
+        "account_created": "The account \"{name}\" is created and logged in. Now enter \"{name}\" at the person as their Tolino account.",
+        "account_renamed": "The account is now called \"{name}\" (login kept, {books} sent books carried over).",
+        "account_removed": "The account \"{name}\" is removed."
+      }
     }
   },
   "services": {

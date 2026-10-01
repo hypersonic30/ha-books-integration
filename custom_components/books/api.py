@@ -163,3 +163,29 @@ class TolinoBridgeClient(_Client):
     @property
     def configured(self) -> bool:
         return bool(self.base_url) and self.headers["Authorization"] != "Bearer "
+
+
+async def async_bridge_accounts(hass: HomeAssistant, cfg: dict) -> list[str] | None:
+    """The Thalia accounts the bridge knows (None: no bridge configured, or it does not answer right now).
+
+    Asks `GET /accounts` (works without a default account); an older bridge has no such route and answers its /status instead
+    (its only account is the default one)."""
+    bridge = TolinoBridgeClient(hass, cfg)
+    if not bridge.configured:
+        return None
+    names = None
+    try:
+        body = await bridge.get("/accounts")
+        names = body.get("accounts") if isinstance(body, dict) else None
+    except UpstreamError as exc:
+        if exc.status != 404:
+            return None
+    except (aiohttp.ClientError, TimeoutError):
+        return None
+    if names is None:
+        try:
+            status = await bridge.get("/status")
+        except (UpstreamError, aiohttp.ClientError, TimeoutError):
+            return None
+        names = status.get("accounts") if isinstance(status, dict) else None
+    return [str(n) for n in names] if isinstance(names, list) else [DEFAULT_TOLINO_ACCOUNT]

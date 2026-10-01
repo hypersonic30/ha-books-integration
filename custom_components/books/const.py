@@ -13,6 +13,7 @@ CONF_MYLAR_API_KEY = "mylar_api_key"
 
 # Per-person accounts (config subentries): which Home Assistant user reads with which Komga / Audiobookshelf account.
 SUBENTRY_USER = "user"
+SUBENTRY_TOLINO_ACCOUNT = "tolino_account"      # not a stored entry: the flow that manages the bridge's Thalia accounts
 CONF_HA_USER = "ha_user"
 CONF_USER_TOLINO = "tolino"          # this person uses the Tolino bridge
 CONF_TOLINO_ACCOUNT = "tolino_account"   # which Thalia account of the bridge (empty = the default account)

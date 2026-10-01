@@ -76,6 +76,7 @@ def login(hass, hass_client_no_auth):
 def _bridge_knows(aioclient_mock, *names):
     """The bridge's /status as the person form sees it: which Thalia accounts exist."""
     aioclient_mock.get(f"{BRIDGE}/status", json={"logged_in": True, "accounts": list(names) or ["default"]}, headers=JSON)
+    aioclient_mock.get(f"{BRIDGE}/accounts", json={"accounts": list(names) or ["default"]}, headers=JSON)
 
 
 def _last_headers(aioclient_mock):

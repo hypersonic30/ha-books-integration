@@ -197,6 +197,80 @@
         "already_configured": "Diese Person ist schon angelegt",
         "reconfigure_successful": "Gespeichert"
       }
+    },
+    "tolino_account": {
+      "entry_type": "Thalia-Konto",
+      "initiate_flow": {
+        "user": "Thalia-Konten verwalten"
+      },
+      "step": {
+        "user": {
+          "title": "Thalia-Konten verwalten",
+          "description": "Die Thalia-Konten der tolino-Bridge: pro Person eins. Hier wird nichts in Home Assistant gespeichert; die Zugangsdaten liegen nur in der Bridge.",
+          "menu_options": {
+            "create": "Neues Konto anlegen",
+            "rename": "Konto „default“ umbenennen",
+            "remove": "Konto entfernen"
+          }
+        },
+        "create": {
+          "title": "Neues Thalia-Konto anlegen",
+          "description": "Die Person muss sich vorher einmal auf webreader.mytolino.com angemeldet haben. Das Passwort wird **einmal** im Klartext (HTTP im Heimnetz) an die Bridge geschickt und hier nicht gespeichert; die Bridge meldet sich sofort an (bis zu einer Minute). Schlägt der Login fehl, wird das Konto wieder entfernt. {detail}",
+          "data": {
+            "name": "Kontoname",
+            "thalia_user": "Thalia-E-Mail",
+            "thalia_password": "Thalia-Passwort"
+          },
+          "data_description": {
+            "name": "a–z, 0–9, _ und - (bis 32 Zeichen, keine Großbuchstaben), z. B. der Vorname. Diesen Namen trägst du danach bei der Person als Tolino-Konto ein.",
+            "thalia_user": "Die E-Mail-Adresse des Thalia-Kontos dieser Person.",
+            "thalia_password": "Das Passwort des Thalia-Kontos."
+          }
+        },
+        "rename": {
+          "title": "Konto „default“ umbenennen",
+          "description": "Gibt dem ursprünglichen Konto den Namen der Person. Die Anmeldung bleibt erhalten (kein neuer Login). Betroffene Person: {person}. Sie wird auf den neuen Namen umgestellt und behält ihre Liste gesendeter Bücher. {detail}",
+          "data": {
+            "to": "Neuer Kontoname"
+          },
+          "data_description": {
+            "to": "a–z, 0–9, _ und - (bis 32 Zeichen, keine Großbuchstaben), z. B. der Vorname."
+          }
+        },
+        "remove": {
+          "title": "Konto entfernen",
+          "description": "Löscht Zugangsdaten, Sitzung und Browser-Profil des Kontos in der Bridge und die zugehörige Liste gesendeter Bücher hier. Das Thalia-Konto selbst bleibt unberührt. Ein Konto, das noch eine Person nutzt, lässt sich nicht entfernen. {detail}",
+          "data": {
+            "account": "Konto",
+            "confirm": "Ja, dieses Konto entfernen"
+          },
+          "data_description": {
+            "account": "Das Konto, das entfernt wird.",
+            "confirm": "Zur Sicherheit bestätigen."
+          }
+        }
+      },
+      "error": {
+        "name_invalid": "Name: a–z, 0–9, _ und - (bis 32 Zeichen, keine Großbuchstaben, nicht „default“)",
+        "name_taken": "Dieses Konto gibt es in der Bridge schon",
+        "credentials_missing": "Bitte E-Mail und Passwort eintragen",
+        "login_captcha": "Thalia verlangt ein Captcha (Bot-Schutz). Bitte später erneut versuchen.",
+        "login_rejected": "Thalia hat die Zugangsdaten abgelehnt (E-Mail oder Passwort falsch, oder Zwei-Faktor aktiv)",
+        "login_no_device": "Zu diesem Konto gibt es noch kein Gerät: bitte einmal auf webreader.mytolino.com anmelden",
+        "login_backoff": "Die Bridge wartet nach einem fehlgeschlagenen Login noch ab. Bitte später erneut versuchen.",
+        "login_failed": "Der Login ist fehlgeschlagen (Details im Bridge-Log: ./deploy.sh logs)",
+        "bridge_unreachable": "Die Bridge antwortet nicht",
+        "confirm_required": "Bitte das Entfernen bestätigen",
+        "account_in_use": "Dieses Konto nutzt noch eine Person: erst bei der Person ändern oder die Person entfernen"
+      },
+      "abort": {
+        "no_bridge": "In den Haupteinstellungen ist keine tolino-Bridge eingetragen",
+        "bridge_unreachable": "Die Bridge antwortet nicht",
+        "nothing_to_remove": "Es gibt kein Konto, das sich entfernen lässt („default“ lässt sich nur umbenennen)",
+        "account_created": "Das Konto „{name}“ ist angelegt und angemeldet. Trage „{name}“ jetzt bei der Person als Tolino-Konto ein.",
+        "account_renamed": "Das Konto heißt jetzt „{name}“ (Anmeldung erhalten, {books} gesendete Bücher übernommen).",
+        "account_removed": "Das Konto „{name}“ ist entfernt."
+      }
     }
   },
   "services": {

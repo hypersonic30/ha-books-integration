@@ -20,8 +20,12 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
-from .api import TolinoBridgeClient, UpstreamError
+from .api import TolinoBridgeClient, UpstreamError, async_bridge_accounts
+from .jobs import async_forget_account
 from .notify_helper import async_push, unknown_targets
+from .tolino_move import async_rename_default
+from .tolino_send import _bridge_error
+from .users import tolino_accounts, tolino_user_id
 from .const import (
     CONF_TOLINO_ACCOUNT,
     DEFAULT_TOLINO_ACCOUNT,
@@ -29,6 +33,7 @@ from .const import (
     CONF_HA_USER,
     CONF_KOMGA_NAME,
     CONF_USER_TOLINO,
+    SUBENTRY_TOLINO_ACCOUNT,
     SUBENTRY_USER,
     CONF_ABS_TOKEN,
     CONF_ABS_URL,
@@ -268,7 +273,7 @@ class BooksConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @classmethod
     @callback
     def async_get_supported_subentry_types(cls, config_entry) -> dict[str, type[ConfigSubentryFlow]]:
-        return {SUBENTRY_USER: UserSubentryFlow}
+        return {SUBENTRY_USER: UserSubentryFlow, SUBENTRY_TOLINO_ACCOUNT: TolinoAccountFlow}
 
     async def async_step_user(self, user_input: dict | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
@@ -316,14 +321,7 @@ class UserSubentryFlow(ConfigSubentryFlow):
 
     async def _bridge_accounts(self, entry) -> list[str] | None:
         """The Thalia accounts the bridge knows (None: no bridge configured or it does not answer right now)."""
-        if not entry.data.get(CONF_TOLINO_URL):
-            return None
-        try:
-            status = await TolinoBridgeClient(self.hass, entry.data).get("/status")
-        except (UpstreamError, aiohttp.ClientError, TimeoutError):
-            return None
-        names = status.get("accounts") if isinstance(status, dict) else None
-        return [str(n) for n in names] if isinstance(names, list) else [DEFAULT_TOLINO_ACCOUNT]   # an older bridge: just the default
+        return await async_bridge_accounts(self.hass, entry.data)
 
     async def _form(self, step: str, user_input: dict | None) -> SubentryFlowResult:
         entry = self._get_entry()
@@ -421,3 +419,126 @@ class UserSubentryFlow(ConfigSubentryFlow):
         people = {u.id: u.name for u in await self.hass.auth.async_get_users()}
         data["_title"] = people.get(data[CONF_HA_USER]) or data[CONF_HA_USER]
         return data, errors
+
+
+# ── The bridge's Thalia accounts: create, rename "default", remove ─────────────────────────────────────
+
+_LOGIN_ERRORS = {"account_exists": "name_taken", "bad_request": "name_invalid", "captcha": "login_captcha", "waf": "login_captcha",
+                 "rejected": "login_rejected", "2fa": "login_rejected", "no_device": "login_no_device", "login_backoff": "login_backoff"}
+
+
+async def _bridge_account_names(hass: HomeAssistant, entry) -> list[str] | None:
+    return await async_bridge_accounts(hass, entry.data)
+
+
+class TolinoAccountFlow(ConfigSubentryFlow):
+    """"Thalia-Konten verwalten": create a new account (name, Thalia e-mail and password), rename the original "default" account to the
+    name of its person, or remove an account. This stores nothing in Home Assistant: the password goes to the bridge once and is
+    dropped here, and every path ends with a message (abort)."""
+
+    async def async_step_user(self, user_input: dict | None = None) -> SubentryFlowResult:
+        entry = self._get_entry()
+        if not entry.data.get(CONF_TOLINO_URL):
+            return self.async_abort(reason="no_bridge")
+        names = await _bridge_account_names(self.hass, entry)
+        if names is None:
+            return self.async_abort(reason="bridge_unreachable")
+        options = ["create"]
+        if DEFAULT_TOLINO_ACCOUNT in names:
+            options.append("rename")
+        if any(n != DEFAULT_TOLINO_ACCOUNT for n in names):
+            options.append("remove")
+        return self.async_show_menu(step_id="user", menu_options=options)
+
+    @staticmethod
+    def _valid_name(name: str) -> bool:
+        return name != DEFAULT_TOLINO_ACCOUNT and bool(_ACCOUNT_NAME.match(name))
+
+    def _bridge_failure(self, exc: Exception) -> tuple[str, str]:
+        """(error key, detail from the bridge) for a failed bridge call."""
+        if isinstance(exc, UpstreamError):
+            code, detail, _ = _bridge_error(exc)
+            return _LOGIN_ERRORS.get(code, "login_failed"), detail
+        return "bridge_unreachable", ""
+
+    async def async_step_create(self, user_input: dict | None = None) -> SubentryFlowResult:
+        entry, errors, detail = self._get_entry(), {}, ""
+        shown = user_input or {}
+        if user_input is not None:
+            name = (user_input.get("name") or "").strip()
+            thalia_user = (user_input.get("thalia_user") or "").strip()
+            password = user_input.get("thalia_password") or ""
+            known = await _bridge_account_names(self.hass, entry)
+            if not self._valid_name(name):
+                errors["name"] = "name_invalid"
+            elif known is not None and name in known:
+                errors["name"] = "name_taken"
+            elif not thalia_user or not password:
+                errors["thalia_password"] = "credentials_missing"
+            if not errors:
+                try:
+                    await TolinoBridgeClient(self.hass, entry.data).request(
+                        "POST", "/accounts", json={"name": name, "user": thalia_user, "password": password}, timeout=300)
+                except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
+                    errors["base"], detail = self._bridge_failure(exc)
+                else:
+                    return self.async_abort(reason="account_created", description_placeholders={"name": name})
+        schema = vol.Schema({
+            vol.Required("name", description={"suggested_value": shown.get("name", "")}): str,
+            vol.Required("thalia_user", description={"suggested_value": shown.get("thalia_user", "")}): str,
+            vol.Required("thalia_password"): _PASSWORD,          # never pre-filled
+        })
+        return self.async_show_form(step_id="create", data_schema=schema, errors=errors, description_placeholders={"detail": detail})
+
+    async def _person_using(self, account: str) -> str:
+        uid = tolino_user_id(self.hass, account)
+        user = await self.hass.auth.async_get_user(uid) if uid else None
+        return (user.name if user else None) or ""
+
+    async def async_step_rename(self, user_input: dict | None = None) -> SubentryFlowResult:
+        entry, errors, detail = self._get_entry(), {}, ""
+        person = await self._person_using(DEFAULT_TOLINO_ACCOUNT)
+        if user_input is not None:
+            to = (user_input.get("to") or "").strip()
+            known = await _bridge_account_names(self.hass, entry)
+            if not self._valid_name(to):
+                errors["to"] = "name_invalid"
+            elif known is not None and to in known:
+                errors["to"] = "name_taken"
+            if not errors:
+                try:
+                    moved = await async_rename_default(self.hass, entry, to)
+                except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
+                    errors["base"], detail = self._bridge_failure(exc)
+                else:
+                    return self.async_abort(reason="account_renamed", description_placeholders={"name": to, "books": str(moved)})
+        schema = vol.Schema({vol.Required("to", description={"suggested_value": (user_input or {}).get("to", "")}): str})
+        return self.async_show_form(step_id="rename", data_schema=schema, errors=errors,
+                                    description_placeholders={"person": person or "-", "detail": detail})
+
+    async def async_step_remove(self, user_input: dict | None = None) -> SubentryFlowResult:
+        entry, errors, detail = self._get_entry(), {}, ""
+        names = [n for n in (await _bridge_account_names(self.hass, entry) or []) if n != DEFAULT_TOLINO_ACCOUNT]
+        if not names:
+            return self.async_abort(reason="nothing_to_remove")
+        if user_input is not None:
+            account = user_input.get("account") or ""
+            if not user_input.get("confirm"):
+                errors["confirm"] = "confirm_required"
+            elif account in tolino_accounts(self.hass):
+                errors["account"] = "account_in_use"
+            elif account not in names:
+                errors["account"] = "name_invalid"
+            if not errors:
+                try:
+                    await TolinoBridgeClient(self.hass, entry.data).request("DELETE", f"/accounts/{account}", timeout=60)
+                except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
+                    errors["base"], detail = self._bridge_failure(exc)
+                else:
+                    await async_forget_account(self.hass, account)
+                    return self.async_abort(reason="account_removed", description_placeholders={"name": account})
+        schema = vol.Schema({
+            vol.Required("account"): SelectSelector(SelectSelectorConfig(options=[SelectOptionDict(value=n, label=n) for n in names], mode="dropdown")),
+            vol.Required("confirm", default=False): bool,
+        })
+        return self.async_show_form(step_id="remove", data_schema=schema, errors=errors, description_placeholders={"detail": detail})

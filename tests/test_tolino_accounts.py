@@ -37,6 +37,10 @@ def bridge_status(aioclient_mock, names=("default", "cara"), per_account=None):
         return AiohttpClientMockResponse(method, url, json=body, headers=JSON)
     aioclient_mock.get(f"{BRIDGE}/status", side_effect=side)
 
+    async def listing(method, url, data):                       # GET /accounts: the list, independent of a default account
+        return AiohttpClientMockResponse(method, url, json={"accounts": list(names)}, headers=JSON)
+    aioclient_mock.get(f"{BRIDGE}/accounts", side_effect=listing)
+
 
 def person(user, **kw):
     return ConfigSubentryData(subentry_type="user", title=user.name, unique_id=user.id,
@@ -148,6 +152,7 @@ async def test_an_account_name_without_a_tolino_is_refused(hass, family, aioclie
 async def test_a_bridge_that_does_not_answer_does_not_block_saving(hass, family, aioclient_mock):
     users, entry = family
     aioclient_mock.get(f"{BRIDGE}/status", exc=aiohttp.ClientConnectionError("down"))
+    aioclient_mock.get(f"{BRIDGE}/accounts", exc=aiohttp.ClientConnectionError("down"))
     dora = await hass.auth.async_create_user("Dora", group_ids=["system-users"])
     result = await _flow(hass, entry, ha_user=dora.id, tolino=True, tolino_account="dora")
     assert result["type"].value == "create_entry"                       # cannot be checked right now; the format was

@@ -50,3 +50,22 @@ async def async_move_account(hass: HomeAssistant, source: str, target: str) -> i
         await source_job._store.async_save(source_job.state)              # noqa: SLF001
     _LOGGER.info("books: moved the Tolino account '%s' to '%s' (%d sent books)", source, target, moved)
     return moved
+
+
+async def async_rename_default(hass: HomeAssistant, entry, to: str) -> int:
+    """Rename the bridge's original account to `to` in one go: the bridge moves credentials, session and Chrome profile (the login is
+    kept); the person who uses "default" is switched to the new name and the list of sent books follows. Returns how many books moved.
+    Bridge errors (UpstreamError, aiohttp errors) are raised as they are, before anything in Home Assistant has been changed."""
+    from .api import TolinoBridgeClient
+    from .const import CONF_HA_USER, CONF_TOLINO_ACCOUNT, DEFAULT_TOLINO_ACCOUNT
+    from .jobs import async_refresh_users
+    from .users import tolino_user_id
+
+    uid = tolino_user_id(hass, DEFAULT_TOLINO_ACCOUNT)
+    await TolinoBridgeClient(hass, entry.data).request("POST", "/accounts/default/rename", json={"to": to}, timeout=120)
+    if uid is None:
+        return 0                                                      # nobody used it yet: nothing in Home Assistant to carry over
+    sub = next(s for s in entry.subentries.values() if s.data.get(CONF_HA_USER) == uid)
+    hass.config_entries.async_update_subentry(entry, sub, data={**sub.data, CONF_TOLINO_ACCOUNT: to})
+    await async_refresh_users(hass, entry)                            # the new account has its jobs and registry now
+    return await async_move_account(hass, DEFAULT_TOLINO_ACCOUNT, to)
