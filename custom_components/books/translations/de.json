@@ -160,7 +160,7 @@
             "auto_send": "Neue E-Books in Audiobookshelf gehen automatisch an dieses tolino. Nur Bücher, die NACH dem Einschalten dazukommen. Braucht „Nutzt die Tolino-Bridge“.",
             "sync_progress": "Übernimmt Leseposition und „Gelesen“ der gesendeten Bücher von tolino in Audiobookshelf (und die Card). Braucht „Nutzt die Tolino-Bridge“.",
             "sync_progress_write": "Schickt deinen Stand aus Audiobookshelf (was du in der Card liest) zu tolino. Braucht die Option darüber.",
-            "tolino_account": "Name des Thalia-Kontos dieser Person in der Bridge (auf Unraid: deploy.sh account add <name>). Leer = das Standardkonto der Bridge. Jede Person braucht ihr eigenes Konto."
+            "tolino_account": "Name des Thalia-Kontos dieser Person in der Bridge (auf Unraid: deploy.sh account add NAME). Leer = das Standardkonto der Bridge. Jede Person braucht ihr eigenes Konto."
           }
         },
         "reconfigure": {
@@ -186,7 +186,7 @@
             "auto_send": "Neue E-Books in Audiobookshelf gehen automatisch an dieses tolino. Nur Bücher, die NACH dem Einschalten dazukommen. Braucht „Nutzt die Tolino-Bridge“.",
             "sync_progress": "Übernimmt Leseposition und „Gelesen“ der gesendeten Bücher von tolino in Audiobookshelf (und die Card). Braucht „Nutzt die Tolino-Bridge“.",
             "sync_progress_write": "Schickt deinen Stand aus Audiobookshelf (was du in der Card liest) zu tolino. Braucht die Option darüber.",
-            "tolino_account": "Name des Thalia-Kontos dieser Person in der Bridge (auf Unraid: deploy.sh account add <name>). Leer = das Standardkonto der Bridge. Jede Person braucht ihr eigenes Konto."
+            "tolino_account": "Name des Thalia-Kontos dieser Person in der Bridge (auf Unraid: deploy.sh account add NAME). Leer = das Standardkonto der Bridge. Jede Person braucht ihr eigenes Konto."
           }
         }
       },

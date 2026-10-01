@@ -81,3 +81,18 @@ async def test_home_assistant_loads_the_person_form_texts(hass, language):
     for field in PERSON_FIELDS:
         assert loaded.get(f"component.{DOMAIN}.config_subentries.user.step.user.data.{field}"), f"{language}: no label for {field}"
         assert loaded.get(f"component.{DOMAIN}.config_subentries.user.step.user.data_description.{field}"), f"{language}: no description for {field}"
+
+
+@pytest.mark.parametrize("file", FILES)
+def test_no_text_looks_like_html(file):
+    """hassfest refuses strings with <...> (it takes them for HTML) - found out by a failed CI run, so check it here."""
+    import re
+
+    def walk(node, path=""):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                yield from walk(v, f"{path}.{k}" if path else k)
+        elif isinstance(node, str) and re.search(r"<[^>\s][^>]*>", node):
+            yield path, node
+    bad = list(walk(json.loads((BASE / file).read_text())))
+    assert not bad, f"{file}: {bad}"

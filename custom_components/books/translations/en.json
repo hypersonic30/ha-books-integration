@@ -160,7 +160,7 @@
             "auto_send": "New ebooks in Audiobookshelf are sent to this tolino automatically. Only books added AFTER you switch it on. Needs \"Uses the Tolino bridge\".",
             "sync_progress": "Imports reading position and 'finished' of the books sent to tolino into Audiobookshelf (and the card). Needs \"Uses the Tolino bridge\".",
             "sync_progress_write": "Sends your state from Audiobookshelf (what you read in the card) to tolino. Needs the option above.",
-            "tolino_account": "Name of this person's Thalia account in the bridge (on Unraid: deploy.sh account add <name>). Empty = the bridge's default account. Every person needs their own account."
+            "tolino_account": "Name of this person's Thalia account in the bridge (on Unraid: deploy.sh account add NAME). Empty = the bridge's default account. Every person needs their own account."
           }
         },
         "reconfigure": {
@@ -186,7 +186,7 @@
             "auto_send": "New ebooks in Audiobookshelf are sent to this tolino automatically. Only books added AFTER you switch it on. Needs \"Uses the Tolino bridge\".",
             "sync_progress": "Imports reading position and 'finished' of the books sent to tolino into Audiobookshelf (and the card). Needs \"Uses the Tolino bridge\".",
             "sync_progress_write": "Sends your state from Audiobookshelf (what you read in the card) to tolino. Needs the option above.",
-            "tolino_account": "Name of this person's Thalia account in the bridge (on Unraid: deploy.sh account add <name>). Empty = the bridge's default account. Every person needs their own account."
+            "tolino_account": "Name of this person's Thalia account in the bridge (on Unraid: deploy.sh account add NAME). Empty = the bridge's default account. Every person needs their own account."
           }
         }
       },
