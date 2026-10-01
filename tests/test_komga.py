@@ -159,3 +159,16 @@ async def test_flow_komga_errors(hass, aioclient_mock, extra, status, body, erro
     aioclient_mock.get(f"{KOMGA}/api/v2/users/me", status=status, json=body, headers=JSON)
     result = await _run(hass, extra)
     assert result["type"] is FlowResultType.FORM and result["errors"] == errors
+
+
+# --- an administrator's key is refused: the cards never need one -------------------------------------------------------------------------
+
+@pytest.mark.parametrize("roles,ok", [(["USER"], True), ([], True), (["USER", "FILE_DOWNLOAD", "PAGE_STREAMING"], True), (["ADMIN", "USER"], False), (["admin"], False)])
+async def test_flow_refuses_a_komga_admin_key(hass, aioclient_mock, roles, ok):
+    _ok(aioclient_mock)
+    aioclient_mock.get(f"{KOMGA}/api/v2/users/me", json={"email": "a@b", "roles": roles}, headers=JSON)
+    result = await _run(hass, {"komga_url": KOMGA, "komga_api_key": "k"})
+    if ok:
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+    else:
+        assert result["type"] is FlowResultType.FORM and result["errors"] == {"komga_api_key": "komga_admin"}

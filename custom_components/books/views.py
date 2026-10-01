@@ -20,6 +20,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import ChaptarrClient, TolinoBridgeClient, UpstreamError, get_config
+from .abs_policy import abs_allowed
+from .auth_watch import key_accepted, key_rejected
+from .chaptarr_policy import chaptarr_allowed
 from .komga_policy import komga_allowed
 from .mylar_policy import mylar_request
 from .tolino_registry import async_ensure_registry
@@ -27,7 +30,6 @@ from .users import NO_PERSON, access_denied, account_for_user, config_for, tolin
 from .tolino_send import SendError, async_send_to_tolino
 from .const import (
     CHAPTARR_ALLOWED_COMMANDS,
-    CHAPTARR_BLOCKED_SEGMENTS,
     CONF_ABS_TOKEN,
     CONF_ABS_URL,
     CONF_CHAPTARR_API_KEY,
@@ -48,6 +50,12 @@ _LOGGER = logging.getLogger(__name__)
 
 # Paths whose Chaptarr calls fan out to every indexer / metadata provider.
 _SLOW_CHAPTARR_PREFIXES = ("release", "search", "book/lookup", "author/lookup")
+
+
+def _odd_path(path: str) -> bool:
+    """Dot segments, backslashes, NULs and left-over percent signs have no place in the paths the cards use (Home Assistant filters most of
+    them already; this closes the rest, e.g. `..\\`)."""
+    return any(seg in (".", "..") for seg in path.split("/")) or any(ch in path for ch in ("\\", "\x00", "%"))
 
 
 class _ProxyBase(HomeAssistantView):
@@ -75,6 +83,8 @@ class _ProxyBase(HomeAssistantView):
     async def _handle(self, request: web.Request, path: str, method: str) -> web.StreamResponse:
         if access_denied(self._hass, user_of(request)):
             return web.json_response(NO_PERSON, status=403)
+        if _odd_path(path):
+            return web.json_response({"error": "Invalid path"}, status=400)
         cfg = config_for(self._hass, user_of(request))     # the asking person's own Komga key / Audiobookshelf token
         try:
             return await self._route(request, path, method, cfg)
@@ -125,6 +135,10 @@ class _ProxyBase(HomeAssistantView):
             allow_redirects=False,
             timeout=aiohttp.ClientTimeout(total=timeout, sock_connect=10),
         ) as upstream:
+            if upstream.status == 401:
+                key_rejected(self._hass, self.service, user_of(request))          # a repair hint: the key was refused
+            elif upstream.status < 400:
+                key_accepted(self._hass, self.service, user_of(request))
             response = web.StreamResponse(status=upstream.status)
             for name in PASSTHROUGH_RESPONSE_HEADERS:
                 if name in upstream.headers:
@@ -147,12 +161,12 @@ class ChaptarrProxyView(_ProxyBase):
         base = cfg.get(CONF_CHAPTARR_URL, "").rstrip("/")
         if not base:
             return web.json_response({"error": "Chaptarr is not configured"}, status=503)
-        segment = path.strip("/").split("/", 1)[0].split("?", 1)[0].lower()
-        if segment in CHAPTARR_BLOCKED_SEGMENTS:
+        if not chaptarr_allowed(method, path):
             return web.json_response(
-                {"error": f"'{segment}' is managed in Chaptarr's own settings, not through Home Assistant"},
+                {"error": f"{method} /{path} is not available through Home Assistant (Chaptarr's settings and anything that changes or deletes stay in Chaptarr)"},
                 status=403,
             )
+        segment = path.strip("/").split("/", 1)[0].lower()
         if segment == "command" and method == "POST":
             try:
                 command = json.loads(await request.read() or b"{}")
@@ -198,6 +212,8 @@ class AbsProxyView(_ProxyBase):
         base = cfg.get(CONF_ABS_URL, "").rstrip("/")
         if not base:
             return web.json_response({"error": "Audiobookshelf is not configured"}, status=503)
+        if not abs_allowed(method, path):
+            return web.json_response({"error": f"{method} /{path} is not available through Home Assistant"}, status=403)
         # Media files can be many hours long; only bound the connect phase.
         timeout = None if "/file/" in path or path.endswith(("/ebook", "/download")) else 30
         return await self._stream(
@@ -272,7 +288,16 @@ class MylarProxyView(_ProxyBase):
             return web.json_response({"success": True, "data": "queued"}, status=202)
         async with session.get(url, params=upstream_params, allow_redirects=False,
                                timeout=aiohttp.ClientTimeout(total=SLOW_REQUEST_TIMEOUT, sock_connect=10)) as upstream:
-            return web.Response(status=upstream.status, body=_json_body(await upstream.read(), upstream.status),
+            raw = await upstream.read()
+            try:
+                answer = json.loads(raw)
+            except ValueError:
+                answer = None
+            if isinstance(answer, dict) and answer.get("success") is False and (answer.get("error") or {}).get("code") == 460:
+                key_rejected(self._hass, self.service, user_of(request))          # Mylar: "Missing API key" / wrong key
+            elif upstream.status < 400:
+                key_accepted(self._hass, self.service, user_of(request))
+            return web.Response(status=upstream.status, body=_json_body(raw, upstream.status),
                                 content_type="application/json", charset="utf-8")
 
     async def _fire(self, session, url, params, task_key) -> None:

@@ -27,13 +27,13 @@ no entities; with one it adds a few status entities (below).
 
 ## Features
 
-- **Proxy for Chaptarr** — search, add, queue, history, calendar, interactive release search.
-  Chaptarr's *settings* (indexers, download clients, profiles, system) are deliberately **not**
-  reachable through Home Assistant; they stay in Chaptarr's own UI. Only harmless commands
-  (book/author search, refresh, RSS sync) can be triggered.
-- **Proxy for Audiobookshelf** — libraries, items, covers, playback sessions and progress.
-  Audio files and EPUBs are **streamed** with HTTP Range support (seeking in 30-hour M4Bs works),
-  and `<audio>`/`<img>` tags authenticate via Home Assistant signed URLs.
+- **Proxy for Chaptarr** — search, queue/wanted list, history, calendar, interactive release search, and a few harmless commands (book/author search,
+  refresh, RSS sync). A strict **allow-list**: nothing that changes or deletes books, authors, files, queue entries or blocklists, and none of Chaptarr's
+  settings (indexers, download clients, profiles, system). Chaptarr has one API key for everybody, so this list is what keeps an ordinary person from deleting
+  the library. Adding a book goes through `POST /api/books/add`.
+- **Proxy for Audiobookshelf** — libraries, items, covers, EPUB and audio files, playback sessions and each person's own reading progress, also an
+  **allow-list** (no users, API keys, scans, edits or deletes, whatever the token would allow). Audio files and EPUBs are **streamed** with HTTP Range
+  support (seeking in 30-hour M4Bs works), and `<audio>`/`<img>` tags authenticate via Home Assistant signed URLs.
 - **"Only this book" add** — `POST /api/books/add` adds a book as ebook and/or audiobook and
   monitors **only that book**, with no automatic monitoring of the author's future releases,
   explicitly for *each* media type. (Chaptarr's own dialog silently falls back to "All books"
@@ -51,6 +51,18 @@ no entities; with one it adds a few status entities (below).
 - **People (optional)** — every Home Assistant user can have their own Komga/Audiobookshelf account, notify target and tolino account.
 - **tolino (optional)** — send ebooks to the tolino Cloud, automatically if you like, and carry reading progress both ways; one Thalia
   account per person through the bridge.
+
+## Security at a glance
+
+- Every request needs a Home Assistant login **and a person**; each proxy has a strict allow-list (Chaptarr, Audiobookshelf, Komga, Mylar); paths with
+  `..`, backslashes, NUL or percent signs are refused.
+- **Administrator keys are refused** when you save: a Komga key whose user has the ADMIN role, an Audiobookshelf token of an `admin`/`root` user. The cards
+  only need to read - use a dedicated restricted user. (Existing entries are not checked until you edit them.)
+- **Repair hints** appear when a service refuses a key (Komga, Audiobookshelf, Chaptarr: HTTP 401; Mylar: "Missing API key"), per service and person, and
+  disappear when it works again.
+- **Diagnostics** (the integration's three-dots menu → Download diagnostics) have every key, token, notify target and user id blanked and no titles.
+- Keys and tokens live in Home Assistant's config storage (and therefore in its backups): use encrypted backups. The tolino bridge speaks plain HTTP: keep
+  its port off the internet (see its `docs/unraid.md`, "Härtung").
 
 ## Installation
 
@@ -152,8 +164,8 @@ Settings → Devices & Services → Add Integration → **Books**:
 | Chaptarr URL | e.g. `http://192.168.1.10:8789` |
 | Chaptarr API key | Chaptarr → Settings → General → API Key |
 | Audiobookshelf URL | e.g. `http://192.168.1.10:13378` |
-| Audiobookshelf API token | token of a **dedicated, restricted** Audiobookshelf user (Settings → Users → create a user without upload/delete/update rights) — not the admin |
-| Komga URL / API key | optional, for the Manga Card: address of your Komga and the API key of a Komga user **without admin rights**. Checked when you save |
+| Audiobookshelf API token | token of a **dedicated, restricted** Audiobookshelf user (Settings → Users → create a user without upload/delete/update rights) — an admin token is refused |
+| Komga URL / API key | optional, for the Manga Card: address of your Komga and the API key of a Komga user **without admin rights** (an admin key is refused). Checked when you save |
 | Mylar3 URL / API key | optional, for searching and downloading manga in the Manga Card: address of Mylar3 and its API key (Mylar → Settings → Web Interface → API, enable it first). Checked when you save |
 | Tolino bridge URL / token | optional: address of your tolino-bridge (e.g. `http://192.168.1.10:8199`) and its token (`deploy.sh token`). Leave empty to disable "send to Tolino" |
 | Verify SSL | disable only for self-signed certificates |

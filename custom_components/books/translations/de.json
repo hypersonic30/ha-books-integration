@@ -96,7 +96,9 @@
       "mylar_invalid_auth": "Mylar hat den API-Schlüssel abgelehnt",
       "mylar_key_missing": "Bitte auch den Mylar-API-Schlüssel eintragen",
       "mylar_url_missing": "Bitte auch die Mylar-URL eintragen",
-      "not_mylar": "Unter dieser URL läuft kein Mylar"
+      "not_mylar": "Unter dieser URL läuft kein Mylar",
+      "komga_admin": "Das ist der Schlüssel eines Komga-Administrators. Nimm einen eigenen Benutzer ohne Admin-Rechte (die Cards brauchen nur Lesen).",
+      "abs_admin": "Das ist das Token eines Audiobookshelf-Administrators. Nimm einen eingeschränkten Benutzer (die Cards brauchen nur Lesen und Hören)."
     },
     "abort": {
       "reconfigure_successful": "Verbindung aktualisiert",
@@ -190,7 +192,9 @@
         "sync_progress_required": "Braucht „Lesefortschritt von tolino übernehmen“ (bitte auch einschalten)",
         "tolino_account_unknown": "Dieses Konto kennt die Bridge nicht (auf Unraid: deploy.sh account list bzw. account add)",
         "tolino_account_taken": "Dieses Konto nutzt schon eine andere Person – jede Person braucht ein eigenes",
-        "tolino_account_invalid": "Name: a–z, 0–9, _ und - (bis 32 Zeichen, keine Großbuchstaben)"
+        "tolino_account_invalid": "Name: a–z, 0–9, _ und - (bis 32 Zeichen, keine Großbuchstaben)",
+        "komga_admin": "Das ist der Schlüssel eines Komga-Administrators. Nimm einen eigenen Benutzer ohne Admin-Rechte (die Cards brauchen nur Lesen).",
+        "abs_admin": "Das ist das Token eines Audiobookshelf-Administrators. Nimm einen eingeschränkten Benutzer (die Cards brauchen nur Lesen und Hören)."
       },
       "abort": {
         "no_users_left": "Alle Home-Assistant-Benutzer sind schon angelegt",
@@ -293,6 +297,10 @@
     "no_person": {
       "title": "Keine Person angelegt",
       "description": "Ohne Person hat niemand Zugriff auf die Cards: Jeder braucht seine eigenen Konten (Lesefortschritt, Benachrichtigungen, tolino). Öffne Einstellungen → Geräte & Dienste → Books und tippe auf „Person hinzufügen“, am besten für jeden Home-Assistant-Benutzer, der die Cards nutzt."
+    },
+    "upstream_auth": {
+      "title": "{service} lehnt den Zugang ab",
+      "description": "{service} hat den Schlüssel bzw. das Token für „{person}“ abgelehnt (401). Die Cards zeigen dann Fehler statt Inhalt. Prüfe den Schlüssel unter Einstellungen → Geräte & Dienste → Books (bei der Person, bei „-“ in den Haupteinstellungen), z. B. nach einer Erneuerung. Der Hinweis verschwindet, sobald es wieder klappt."
     }
   }
 }

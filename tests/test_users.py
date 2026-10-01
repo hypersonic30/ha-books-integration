@@ -447,3 +447,21 @@ async def test_the_tolino_person_can_be_edited_without_tripping_the_account_take
         "auto_send": True, "sync_progress": True, "sync_progress_write": True, "notify_test": False})
     assert done["type"].value == "abort" and done["reason"] == "reconfigure_successful"
     assert household.subentries[sub.subentry_id].data["auto_send"] is True
+
+
+@pytest.mark.parametrize("kind,ok", [("user", True), ("guest", True), ("admin", False), ("root", False), ("Admin", False)])
+async def test_a_person_with_an_audiobookshelf_admin_token_is_refused(hass, plain_entry, cast, aioclient_mock, kind, ok):
+    aioclient_mock.get(f"{ABS}/api/me", json={"username": "anna", "type": kind}, headers=JSON)
+    flow, result = await _add(hass, plain_entry, ha_user=cast["anna"].id, komga_api_key="", abs_token="tok", notify_service="", tolino=False,
+                              auto_send=False, sync_progress=False, sync_progress_write=False, tolino_account="", notify_test=False)
+    if ok:
+        assert result["type"].value == "create_entry"
+    else:
+        assert result["type"].value == "form" and result["errors"] == {"abs_token": "abs_admin"} and not plain_entry.subentries
+
+
+async def test_a_person_with_a_komga_admin_key_is_refused(hass, plain_entry, cast, aioclient_mock):
+    aioclient_mock.get(f"{KOMGA}/api/v2/users/me", json={"email": "root@x", "roles": ["ADMIN", "USER"]}, headers=JSON)
+    flow, result = await _add(hass, plain_entry, ha_user=cast["anna"].id, komga_api_key="k", abs_token="", notify_service="", tolino=False,
+                              auto_send=False, sync_progress=False, sync_progress_write=False, tolino_account="", notify_test=False)
+    assert result["errors"] == {"komga_api_key": "komga_admin"}

@@ -96,7 +96,9 @@
       "mylar_invalid_auth": "Mylar rejected the API key",
       "mylar_key_missing": "Enter the Mylar API key as well",
       "mylar_url_missing": "Enter the Mylar URL as well",
-      "not_mylar": "That URL is not a Mylar server"
+      "not_mylar": "That URL is not a Mylar server",
+      "komga_admin": "This is the key of a Komga administrator. Use a dedicated user without admin rights (the cards only need to read).",
+      "abs_admin": "This is the token of an Audiobookshelf administrator. Use a restricted user (the cards only need to read and listen)."
     },
     "abort": {
       "reconfigure_successful": "Connection updated",
@@ -190,7 +192,9 @@
         "sync_progress_required": "Needs \"Take reading progress from tolino\" (switch that on too)",
         "tolino_account_unknown": "The bridge does not know this account (on Unraid: deploy.sh account list / account add)",
         "tolino_account_taken": "Another person already uses this account - everybody needs their own",
-        "tolino_account_invalid": "Name: a-z, 0-9, _ and - (up to 32 characters, no capitals)"
+        "tolino_account_invalid": "Name: a-z, 0-9, _ and - (up to 32 characters, no capitals)",
+        "komga_admin": "This is the key of a Komga administrator. Use a dedicated user without admin rights (the cards only need to read).",
+        "abs_admin": "This is the token of an Audiobookshelf administrator. Use a restricted user (the cards only need to read and listen)."
       },
       "abort": {
         "no_users_left": "Every Home Assistant user is already added",
@@ -293,6 +297,10 @@
     "no_person": {
       "title": "No person added yet",
       "description": "Without a person nobody can use the cards: everybody needs their own accounts (reading progress, notifications, tolino). Open Settings > Devices & services > Books and tap \"Add person\", ideally for every Home Assistant user who uses the cards."
+    },
+    "upstream_auth": {
+      "title": "{service} refuses access",
+      "description": "{service} refused the key/token for \"{person}\" (401). The cards then show errors instead of content. Check the key under Settings > Devices & services > Books (at the person, or in the main settings if it says \"-\"), e.g. after it was renewed. This hint disappears as soon as it works again."
     }
   }
 }

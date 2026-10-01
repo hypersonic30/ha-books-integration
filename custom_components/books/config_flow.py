@@ -144,7 +144,10 @@ async def _abs_identity(hass: HomeAssistant, url: str, token: str, verify_ssl: b
             me = await resp.json(content_type=None)
     except (aiohttp.ClientError, TimeoutError, ValueError) as err:
         return _error_key("abs", url, err), ""
-    return None, str(me.get("username") or "") if isinstance(me, dict) else ""
+    who = str(me.get("username") or "") if isinstance(me, dict) else ""
+    if isinstance(me, dict) and str(me.get("type") or "").lower() in ("admin", "root"):
+        return "abs_admin", who            # the cards never need an administrator's token
+    return None, who
 
 
 async def _check_abs(hass: HomeAssistant, url: str, token: str, verify_ssl: bool) -> str | None:
@@ -185,7 +188,10 @@ async def _komga_identity(hass: HomeAssistant, url: str, key: str, verify_ssl: b
         return _error_key("komga", url, err), ""
     if not (isinstance(me, dict) and "roles" in me):
         return "not_komga", ""
-    return None, str(me.get("email") or me.get("id") or "")
+    who = str(me.get("email") or me.get("id") or "")
+    if "ADMIN" in {str(r).upper() for r in (me.get("roles") or [])}:
+        return "komga_admin", who          # the cards never need an administrator's key
+    return None, who
 
 
 async def _check_komga(hass: HomeAssistant, url: str, key: str, verify_ssl: bool) -> str | None:
@@ -252,10 +258,10 @@ async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, st
     if err := await _check_chaptarr(hass, data[CONF_CHAPTARR_URL], data[CONF_CHAPTARR_API_KEY].strip(), verify):
         errors[CONF_CHAPTARR_API_KEY if "auth" in err else CONF_CHAPTARR_URL] = err
     if err := await _check_abs(hass, data[CONF_ABS_URL], data[CONF_ABS_TOKEN].strip(), verify):
-        errors[CONF_ABS_TOKEN if "auth" in err else CONF_ABS_URL] = err
+        errors[CONF_ABS_TOKEN if ("auth" in err or "admin" in err) else CONF_ABS_URL] = err
     if data[CONF_KOMGA_URL]:
         if err := await _check_komga(hass, data[CONF_KOMGA_URL], data[CONF_KOMGA_API_KEY], verify):
-            errors[CONF_KOMGA_API_KEY if "auth" in err else CONF_KOMGA_URL] = err
+            errors[CONF_KOMGA_API_KEY if ("auth" in err or "admin" in err) else CONF_KOMGA_URL] = err
     if data[CONF_MYLAR_URL]:
         if err := await _check_mylar(hass, data[CONF_MYLAR_URL], data[CONF_MYLAR_API_KEY], verify):
             errors[CONF_MYLAR_API_KEY if "auth" in err else CONF_MYLAR_URL] = err

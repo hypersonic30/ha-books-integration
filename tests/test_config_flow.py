@@ -1,4 +1,5 @@
 """Config flow: validation of both services, per-field errors, reconfigure."""
+import pytest as _pytest
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResultType
 
@@ -98,3 +99,14 @@ async def test_the_main_form_has_no_tolino_switches_any_more(hass, aioclient_moc
 async def test_options_off_without_a_bridge_stay_fine(hass, aioclient_mock):
     _ok(aioclient_mock)
     assert (await _flow(hass, {}))["type"] is FlowResultType.CREATE_ENTRY
+
+
+@_pytest.mark.parametrize("kind,ok", [("user", True), ("admin", False), ("root", False)])
+async def test_main_form_refuses_an_audiobookshelf_admin_token(hass, aioclient_mock, kind, ok):
+    aioclient_mock.get(f"{ABS}/api/me", json={"username": "x", "type": kind}, headers={"Content-Type": "application/json"})   # first mock wins
+    aioclient_mock.get(f"{CHAPTARR}/api/v1/system/status", json={"appName": "Chaptarr"})
+    result = await _flow(hass, {})
+    if ok:
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+    else:
+        assert result["type"] is FlowResultType.FORM and result["errors"] == {"abs_token": "abs_admin"}

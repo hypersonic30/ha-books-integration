@@ -66,14 +66,6 @@ AUTO_SEND_INTERVAL_SECONDS = 600
 # Chaptarr API areas the card never needs. They hold indexer/download-client
 # credentials or can reconfigure/shut down Chaptarr, so the proxy refuses them
 # for every method — settings stay in Chaptarr's own UI.
-CHAPTARR_BLOCKED_SEGMENTS = frozenset({
-    "system", "config", "indexer", "downloadclient", "notification",
-    "rootfolder", "qualityprofile", "metadataprofile", "customformat",
-    "delayprofile", "releaseprofile", "importlist", "importlistexclusion",
-    "remotepathmapping", "backup", "update", "log", "filesystem", "tag",
-    "health", "indexerflag", "autotagging", "user", "apikey",
-})
-
 # Commands the card may trigger through POST /command.
 CHAPTARR_ALLOWED_COMMANDS = frozenset({
     "BookSearch", "AuthorSearch", "MissingBookSearch", "RefreshAuthor",

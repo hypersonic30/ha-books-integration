@@ -18,6 +18,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 
 from .api import AbsClient, UpstreamError, get_config
+from .auth_watch import key_accepted, key_rejected
 from .const import CONF_MYLAR_API_KEY, CONF_MYLAR_URL, CONF_NOTIFY_SERVICE, CONF_VERIFY_SSL, DOMAIN, REQUEST_TIMEOUT, WISH_MAX_AGE_SECONDS
 from .notify_helper import async_push
 from .users import get_users
@@ -98,7 +99,10 @@ class Wishes:
                 added += (data or {}).get("results", [])
         except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
             _LOGGER.debug("books: wishes cannot list Audiobookshelf: %s", exc)
+            if isinstance(exc, UpstreamError) and exc.status == 401:
+                key_rejected(self._hass, "Audiobookshelf", None)                  # the shared token of the main settings
             return []
+        key_accepted(self._hass, "Audiobookshelf", None)
         out = []
         for wish in wishes:
             for item in added:

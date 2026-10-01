@@ -28,7 +28,7 @@ from .const import (
 def users_from_entry(entry) -> dict[str, dict]:
     """HA user id -> that person's settings, in the order they were added."""
     return {
-        sub.data[CONF_HA_USER]: dict(sub.data)
+        sub.data[CONF_HA_USER]: {**sub.data, "_name": sub.title}
         for sub in entry.subentries.values()
         if sub.subentry_type == SUBENTRY_USER and sub.data.get(CONF_HA_USER)
     }
