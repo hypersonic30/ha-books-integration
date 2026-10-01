@@ -89,6 +89,23 @@ parameter: `findComic`, `getIndex`, `getComic`, `getWanted`, `getHistory` (GET) 
 when every indexer has been asked (over a minute was seen), so the proxy answers `202` at once and lets Mylar finish in the
 background; the card follows progress through `getWanted`/`getHistory`.
 
+### People: one account each (optional)
+
+By default everybody who uses the cards reads with the **same** Komga/Audiobookshelf account - so one person sees what another reads and
+reading the same book overwrites the other's progress. Give everybody their own accounts instead:
+
+1. Create a Komga user (no admin rights) and an Audiobookshelf user for each person, and note their API key / token.
+2. Settings → Devices & Services → Books → **Add person**. Pick the Home Assistant user, paste their Komga key and/or Audiobookshelf token
+   (empty = that person keeps using the shared account), optionally a notify target and whether they use the Tolino bridge. The keys are
+   checked when you save and the name of the account they belong to is stored with the person.
+3. People can be added, edited and removed at any time, no restart. Everybody without an entry keeps the shared account.
+
+What changes for a person with their own accounts: their own reading progress, bookmarks and "Weiterlesen" in the Books and Manga cards;
+**"An tolino senden" only for people marked as Tolino users** (auto-send and the progress sync then run with that person's Audiobookshelf
+account; once anybody is added and nobody is marked, the bridge features are off); and a push to **their** notify target when a book or manga
+volume **they** asked for is in the library ("Neu in der Bibliothek"; also fired as the event `books_wish_fulfilled`). Books are recognised by title
+and author - a comparison, not a hard link - manga volumes exactly. Nobody is told what the others load.
+
 ## Setup
 
 Settings → Devices & Services → Add Integration → **Books**:

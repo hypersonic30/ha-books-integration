@@ -11,6 +11,7 @@ from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
     AUTO_SEND_INTERVAL_SECONDS,
+    WISH_INTERVAL_SECONDS,
     CONF_DEBUG_LOGGING,
     DOMAIN,
     RESCUE_INTERVAL_SECONDS,
@@ -22,6 +23,8 @@ from .tolino_autosend import AutoSender
 from .tolino_registry import SentRegistry
 from .tolino_sync import ProgressSync
 from .tolino_watch import TolinoWatcher
+from .users import users_from_entry
+from .wishes import Wishes
 from .views import (
     AbsProxyView,
     AddBookView,
@@ -46,6 +49,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Views and the rescue read this live on every request/tick, so a
     # reconfigure applies without re-registering anything.
     data["config"] = dict(entry.data)
+    data["users"] = users_from_entry(entry)
+    # People are added/changed/removed without a reload: everything reads data["users"] live.
+    entry.async_on_unload(entry.add_update_listener(_refresh_users))
 
     _PKG_LOGGER.setLevel(logging.DEBUG if entry.data.get(CONF_DEBUG_LOGGING) else logging.NOTSET)
 
@@ -55,6 +61,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for view in (ChaptarrProxyView, ChaptarrMediaView, AbsProxyView, AddBookView, RescueStatusView, TolinoView, TolinoSyncView, TolinoAutoSendView, KomgaProxyView, MylarProxyView):
             hass.http.register_view(view(hass))
         data["views_registered"] = True
+
+    if "wishes" not in data:
+        data["wishes"] = Wishes(hass)
+        await data["wishes"].async_load()
+    entry.async_on_unload(
+        async_track_time_interval(hass, data["wishes"].async_tick, timedelta(seconds=WISH_INTERVAL_SECONDS))
+    )
 
     if "tolino_sent" not in data:
         data["tolino_sent"] = SentRegistry(hass)
@@ -84,6 +97,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.async_create_background_task(hass, data["tolino_watcher"].async_refresh(), "books_tolino_first_poll")
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+async def _refresh_users(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    hass.data.setdefault(DOMAIN, {})["users"] = users_from_entry(entry)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

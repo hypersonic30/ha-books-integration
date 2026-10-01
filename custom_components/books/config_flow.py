@@ -7,16 +7,25 @@ import aiohttp
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigFlowResult
-from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigFlowResult, ConfigSubentryFlow, SubentryFlowResult
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
 )
 
+from .notify_helper import async_push, unknown_targets
 from .const import (
+    CONF_ABS_NAME,
+    CONF_HA_USER,
+    CONF_KOMGA_NAME,
+    CONF_USER_TOLINO,
+    SUBENTRY_USER,
     CONF_ABS_TOKEN,
     CONF_ABS_URL,
     CONF_AUTO_SEND,
@@ -118,7 +127,8 @@ async def _check_chaptarr(hass: HomeAssistant, url: str, api_key: str, verify_ss
     return None
 
 
-async def _check_abs(hass: HomeAssistant, url: str, token: str, verify_ssl: bool) -> str | None:
+async def _abs_identity(hass: HomeAssistant, url: str, token: str, verify_ssl: bool) -> tuple[str | None, str]:
+    """(error key or None, the Audiobookshelf user the token belongs to)."""
     session = async_get_clientsession(hass, verify_ssl=verify_ssl)
     try:
         async with session.get(
@@ -127,13 +137,17 @@ async def _check_abs(hass: HomeAssistant, url: str, token: str, verify_ssl: bool
             timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
         ) as resp:
             if resp.status in (401, 403):
-                return "abs_invalid_auth"
+                return "abs_invalid_auth", ""
             if resp.status != 200:
-                return "abs_cannot_connect"
-            await resp.json(content_type=None)
+                return "abs_cannot_connect", ""
+            me = await resp.json(content_type=None)
     except (aiohttp.ClientError, TimeoutError, ValueError) as err:
-        return _error_key("abs", url, err)
-    return None
+        return _error_key("abs", url, err), ""
+    return None, str(me.get("username") or "") if isinstance(me, dict) else ""
+
+
+async def _check_abs(hass: HomeAssistant, url: str, token: str, verify_ssl: bool) -> str | None:
+    return (await _abs_identity(hass, url, token, verify_ssl))[0]
 
 
 async def _check_tolino(hass: HomeAssistant, url: str, token: str, verify_ssl: bool) -> str | None:
@@ -155,19 +169,26 @@ async def _check_tolino(hass: HomeAssistant, url: str, token: str, verify_ssl: b
     return None if isinstance(status, dict) and "logged_in" in status else "not_tolino_bridge"
 
 
-async def _check_komga(hass: HomeAssistant, url: str, key: str, verify_ssl: bool) -> str | None:
+async def _komga_identity(hass: HomeAssistant, url: str, key: str, verify_ssl: bool) -> tuple[str | None, str]:
+    """(error key or None, the Komga user the key belongs to)."""
     session = async_get_clientsession(hass, verify_ssl=verify_ssl)
     try:
         async with session.get(f"{url}/api/v2/users/me", headers={"X-API-Key": key},
                                timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)) as resp:
             if resp.status in (401, 403):
-                return "komga_invalid_auth"
+                return "komga_invalid_auth", ""
             if resp.status != 200:
-                return "komga_cannot_connect"
+                return "komga_cannot_connect", ""
             me = await resp.json(content_type=None)
     except (aiohttp.ClientError, TimeoutError, ValueError) as err:
-        return _error_key("komga", url, err)
-    return None if isinstance(me, dict) and "roles" in me else "not_komga"
+        return _error_key("komga", url, err), ""
+    if not (isinstance(me, dict) and "roles" in me):
+        return "not_komga", ""
+    return None, str(me.get("email") or me.get("id") or "")
+
+
+async def _check_komga(hass: HomeAssistant, url: str, key: str, verify_ssl: bool) -> str | None:
+    return (await _komga_identity(hass, url, key, verify_ssl))[0]
 
 
 async def _check_mylar(hass: HomeAssistant, url: str, key: str, verify_ssl: bool) -> str | None:
@@ -254,6 +275,11 @@ class BooksConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @classmethod
+    @callback
+    def async_get_supported_subentry_types(cls, config_entry) -> dict[str, type[ConfigSubentryFlow]]:
+        return {SUBENTRY_USER: UserSubentryFlow}
+
     async def async_step_user(self, user_input: dict | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -274,3 +300,91 @@ class BooksConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=_schema({**entry.data, **(user_input or {})}),
             errors=errors,
         )
+
+
+# ── One person: their Home Assistant user and their own accounts ───────────────────────────────────
+
+class UserSubentryFlow(ConfigSubentryFlow):
+    """"Person hinzufügen": a Home Assistant user, their Komga key, Audiobookshelf token, notify target and Tolino switch.
+
+    Empty Komga key / token = this person keeps using the shared account from the main settings."""
+
+    async def async_step_user(self, user_input: dict | None = None) -> SubentryFlowResult:
+        return await self._form("user", user_input)
+
+    async def async_step_reconfigure(self, user_input: dict | None = None) -> SubentryFlowResult:
+        return await self._form("reconfigure", user_input)
+
+    async def _people(self, keep: str | None) -> list[SelectOptionDict]:
+        taken = {sub.data.get(CONF_HA_USER) for sub in self._get_entry().subentries.values()} - {keep}
+        users = await self.hass.auth.async_get_users()
+        return [SelectOptionDict(value=u.id, label=u.name or u.id)
+                for u in users if u.is_active and not u.system_generated and u.id not in taken]
+
+    async def _form(self, step: str, user_input: dict | None) -> SubentryFlowResult:
+        entry = self._get_entry()
+        sub = self._get_reconfigure_subentry() if step == "reconfigure" else None
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            data, errors = await self._validate(entry, sub, user_input)
+            if not errors:
+                if data.pop("notify_test", False) and data.get(CONF_NOTIFY_SERVICE):
+                    await async_push(self.hass, "Books", "Testnachricht: so kommen Benachrichtigungen bei dir an.", targets=data[CONF_NOTIFY_SERVICE])
+                name = data.pop("_title")
+                if sub is not None:
+                    return self.async_update_and_abort(entry, sub, title=name, data=data)
+                return self.async_create_entry(title=name, data=data, unique_id=data[CONF_HA_USER])
+        shown = {**(sub.data if sub else {}), **(user_input or {})}
+        schema: dict = {}
+        if sub is None:
+            options = await self._people(None)
+            if not options:
+                return self.async_abort(reason="no_users_left")
+            schema[vol.Required(CONF_HA_USER, default=shown.get(CONF_HA_USER, vol.UNDEFINED))] = SelectSelector(
+                SelectSelectorConfig(options=options, mode="dropdown"))
+        schema.update({
+            vol.Optional(CONF_KOMGA_API_KEY, description={"suggested_value": shown.get(CONF_KOMGA_API_KEY, "")}): _PASSWORD,
+            vol.Optional(CONF_ABS_TOKEN, description={"suggested_value": shown.get(CONF_ABS_TOKEN, "")}): _PASSWORD,
+            vol.Optional(CONF_NOTIFY_SERVICE, description={"suggested_value": shown.get(CONF_NOTIFY_SERVICE, "")}): str,
+            vol.Required(CONF_USER_TOLINO, default=bool(shown.get(CONF_USER_TOLINO, False))): bool,
+            vol.Required("notify_test", default=False): bool,
+        })
+        placeholders = {}
+        if sub is not None:
+            people = {u.id: u.name for u in await self.hass.auth.async_get_users()}
+            placeholders["person"] = people.get(sub.data.get(CONF_HA_USER), sub.title)
+        return self.async_show_form(step_id=step, data_schema=vol.Schema(schema), errors=errors, description_placeholders=placeholders)
+
+    async def _validate(self, entry, sub, user_input: dict) -> tuple[dict, dict[str, str]]:
+        cfg = entry.data
+        verify = cfg.get(CONF_VERIFY_SSL, True)
+        data = {
+            CONF_HA_USER: sub.data[CONF_HA_USER] if sub else user_input[CONF_HA_USER],
+            CONF_KOMGA_API_KEY: (user_input.get(CONF_KOMGA_API_KEY) or "").strip(),
+            CONF_ABS_TOKEN: (user_input.get(CONF_ABS_TOKEN) or "").strip(),
+            CONF_NOTIFY_SERVICE: (user_input.get(CONF_NOTIFY_SERVICE) or "").strip(),
+            CONF_USER_TOLINO: bool(user_input.get(CONF_USER_TOLINO)),
+            "notify_test": bool(user_input.get("notify_test")),
+            CONF_KOMGA_NAME: "", CONF_ABS_NAME: "",
+        }
+        errors: dict[str, str] = {}
+        if data[CONF_KOMGA_API_KEY]:
+            if not cfg.get(CONF_KOMGA_URL):
+                errors[CONF_KOMGA_API_KEY] = "komga_not_configured"
+            else:
+                err, who = await _komga_identity(self.hass, cfg[CONF_KOMGA_URL], data[CONF_KOMGA_API_KEY], verify)
+                if err:
+                    errors[CONF_KOMGA_API_KEY] = err
+                data[CONF_KOMGA_NAME] = who
+        if data[CONF_ABS_TOKEN]:
+            err, who = await _abs_identity(self.hass, cfg[CONF_ABS_URL], data[CONF_ABS_TOKEN], verify)
+            if err:
+                errors[CONF_ABS_TOKEN] = err
+            data[CONF_ABS_NAME] = who
+        if data[CONF_USER_TOLINO] and not cfg.get(CONF_TOLINO_URL):
+            errors[CONF_USER_TOLINO] = "tolino_bridge_required"
+        if data[CONF_NOTIFY_SERVICE] and unknown_targets(self.hass, data[CONF_NOTIFY_SERVICE]):
+            errors[CONF_NOTIFY_SERVICE] = "notify_unknown"
+        people = {u.id: u.name for u in await self.hass.auth.async_get_users()}
+        data["_title"] = people.get(data[CONF_HA_USER]) or data[CONF_HA_USER]
+        return data, errors

@@ -22,6 +22,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import ChaptarrClient, TolinoBridgeClient, UpstreamError, get_config
 from .komga_policy import komga_allowed
 from .mylar_policy import mylar_request
+from .users import config_for, tolino_allowed, user_of
 from .tolino_send import SendError, async_send_to_tolino
 from .const import (
     CHAPTARR_ALLOWED_COMMANDS,
@@ -71,7 +72,7 @@ class _ProxyBase(HomeAssistantView):
         return await self._handle(request, path, "DELETE")
 
     async def _handle(self, request: web.Request, path: str, method: str) -> web.StreamResponse:
-        cfg = get_config(self._hass)
+        cfg = config_for(self._hass, user_of(request))     # the asking person's own Komga key / Audiobookshelf token
         try:
             return await self._route(request, path, method, cfg)
         except aiohttp.ClientConnectionError as exc:  # refused, unreachable, or dropped mid-request (restart)
@@ -259,6 +260,8 @@ class MylarProxyView(_ProxyBase):
         url, upstream_params = f"{base}/api", {**params, "apikey": key}
         if background:
             task_key = tuple(sorted(params.items()))
+            if params["cmd"] == "queueIssue":
+                await self._hass.data[DOMAIN]["wishes"].async_add("manga", user_of(request), issue=params["id"])
             if task_key not in self._running:  # a second click while the first search runs would only repeat it
                 self._running.add(task_key)
                 self._hass.async_create_background_task(
@@ -404,6 +407,11 @@ class AddBookView(HomeAssistantView):
                 search_started = True
             except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
                 _LOGGER.warning("books: search for %s could not be started: %s", added_ids, exc)
+        if any(r["ok"] for r in results):
+            author = book.get("author") if isinstance(book.get("author"), dict) else {}
+            await self._hass.data[DOMAIN]["wishes"].async_add(
+                "book", user_of(request), title=str(book.get("title") or ""),
+                author=str(author.get("authorName") or book.get("authorTitle") or ""))
         status = 200 if all(r["ok"] for r in results) else 207
         return web.json_response({"results": results, "search_started": search_started}, status=status)
 
@@ -424,7 +432,7 @@ class TolinoView(HomeAssistantView):
 
     async def get(self, request: web.Request) -> web.Response:
         bridge = TolinoBridgeClient(self._hass, get_config(self._hass))
-        if not bridge.configured:
+        if not bridge.configured or not tolino_allowed(self._hass, user_of(request)):
             return web.json_response({"enabled": False})
         try:
             status = await bridge.get("/status")
@@ -442,6 +450,8 @@ class TolinoView(HomeAssistantView):
         })
 
     async def post(self, request: web.Request) -> web.Response:
+        if not tolino_allowed(self._hass, user_of(request)):
+            return web.json_response({"error": "No Tolino is set up for your account", "code": "no_tolino"}, status=403)
         try:
             data = await request.json()
         except ValueError:
@@ -450,7 +460,8 @@ class TolinoView(HomeAssistantView):
         if not isinstance(item_id, str):
             return web.json_response({"error": "abs_item_id is required", "code": "bad_request"}, status=400)
         try:
-            result = await async_send_to_tolino(self._hass, item_id, force=data.get("force") is True)
+            result = await async_send_to_tolino(self._hass, item_id, force=data.get("force") is True,
+                                                cfg=config_for(self._hass, user_of(request)))
         except SendError as exc:
             return web.json_response({"error": exc.message, "code": exc.code, **exc.extra}, status=exc.status)
         result.pop("title", None)
@@ -468,6 +479,8 @@ class TolinoSyncView(HomeAssistantView):
         self._hass = hass
 
     async def post(self, request: web.Request) -> web.Response:
+        if not tolino_allowed(self._hass, user_of(request)):
+            return web.json_response({"error": "No Tolino is set up for your account", "code": "no_tolino"}, status=403)
         sync = self._hass.data[DOMAIN]["progress_sync"]
         if not sync.enabled:
             return web.json_response({"error": "Progress sync is switched off or no Tolino bridge is configured",
@@ -486,6 +499,8 @@ class TolinoAutoSendView(HomeAssistantView):
         self._hass = hass
 
     async def post(self, request: web.Request) -> web.Response:
+        if not tolino_allowed(self._hass, user_of(request)):
+            return web.json_response({"error": "No Tolino is set up for your account", "code": "no_tolino"}, status=403)
         job = self._hass.data[DOMAIN]["auto_send"]
         if not job.enabled:
             return web.json_response({"error": "Auto-send is switched off or no Tolino bridge is configured",

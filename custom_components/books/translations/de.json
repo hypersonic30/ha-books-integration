@@ -126,5 +126,70 @@
         "name": "Zuletzt automatisch gesendet"
       }
     }
+  },
+  "config_subentries": {
+    "user": {
+      "entry_type": "Person",
+      "initiate_flow": {
+        "user": "Person hinzufügen",
+        "reconfigure": "Person bearbeiten"
+      },
+      "step": {
+        "user": {
+          "title": "Person hinzufügen",
+          "description": "Jede Person bekommt ihre eigenen Konten, damit niemand den Lesefortschritt eines anderen verändert. Leere Felder = das gemeinsame Konto aus den Haupteinstellungen.",
+          "data": {
+            "ha_user": "Home-Assistant-Benutzer",
+            "komga_api_key": "Komga-API-Schlüssel (optional)",
+            "abs_token": "Audiobookshelf-Token (optional)",
+            "notify_service": "Benachrichtigung (optional)",
+            "tolino": "Nutzt die Tolino-Bridge",
+            "notify_test": "Testnachricht senden"
+          },
+          "data_description": {
+            "ha_user": "Wer sich in Home Assistant mit diesem Konto anmeldet.",
+            "komga_api_key": "Komga → Kontoeinstellungen → API-Schlüssel dieser Person. Leer = das gemeinsame Konto aus den Haupteinstellungen.",
+            "abs_token": "Audiobookshelf → Benutzer dieser Person → API-Token. Leer = das gemeinsame Konto aus den Haupteinstellungen.",
+            "notify_service": "z. B. notify.mobile_app_annas_handy – dorthin geht „dein Buch ist da“. Mehrere mit Komma trennen.",
+            "tolino": "Zeigt „An tolino senden“ und nutzt Auto-Senden und Fortschrittsabgleich mit dem Konto dieser Person. Setzt eine Bridge in den Haupteinstellungen voraus.",
+            "notify_test": "Schickt beim Speichern eine Testnachricht an die Benachrichtigung."
+          }
+        },
+        "reconfigure": {
+          "title": "{person} bearbeiten",
+          "description": "Jede Person bekommt ihre eigenen Konten, damit niemand den Lesefortschritt eines anderen verändert. Leere Felder = das gemeinsame Konto aus den Haupteinstellungen.",
+          "data": {
+            "komga_api_key": "Komga-API-Schlüssel (optional)",
+            "abs_token": "Audiobookshelf-Token (optional)",
+            "notify_service": "Benachrichtigung (optional)",
+            "tolino": "Nutzt die Tolino-Bridge",
+            "notify_test": "Testnachricht senden"
+          },
+          "data_description": {
+            "komga_api_key": "Komga → Kontoeinstellungen → API-Schlüssel dieser Person. Leer = das gemeinsame Konto aus den Haupteinstellungen.",
+            "abs_token": "Audiobookshelf → Benutzer dieser Person → API-Token. Leer = das gemeinsame Konto aus den Haupteinstellungen.",
+            "notify_service": "z. B. notify.mobile_app_annas_handy – dorthin geht „dein Buch ist da“. Mehrere mit Komma trennen.",
+            "tolino": "Zeigt „An tolino senden“ und nutzt Auto-Senden und Fortschrittsabgleich mit dem Konto dieser Person. Setzt eine Bridge in den Haupteinstellungen voraus.",
+            "notify_test": "Schickt beim Speichern eine Testnachricht an die Benachrichtigung."
+          }
+        }
+      },
+      "error": {
+        "komga_cannot_connect": "Komga ist unter der URL aus den Haupteinstellungen nicht erreichbar",
+        "komga_invalid_auth": "Komga hat den API-Schlüssel abgelehnt",
+        "not_komga": "Unter der Komga-URL läuft kein Komga",
+        "komga_not_configured": "In den Haupteinstellungen ist noch keine Komga-URL eingetragen",
+        "abs_cannot_connect": "Audiobookshelf ist unter der URL aus den Haupteinstellungen nicht erreichbar",
+        "abs_invalid_auth": "Audiobookshelf hat das Token abgelehnt",
+        "ssl_error": "SSL-Fehler (Zertifikat)",
+        "tolino_bridge_required": "Dafür muss in den Haupteinstellungen eine tolino-Bridge eingetragen sein",
+        "notify_unknown": "Diesen Benachrichtigungsdienst gibt es nicht"
+      },
+      "abort": {
+        "no_users_left": "Alle Home-Assistant-Benutzer sind schon angelegt",
+        "already_configured": "Diese Person ist schon angelegt",
+        "reconfigure_successful": "Gespeichert"
+      }
+    }
   }
 }

@@ -22,7 +22,8 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .api import AbsClient, TolinoBridgeClient, UpstreamError, get_config
+from .api import AbsClient, TolinoBridgeClient, UpstreamError
+from .users import tolino_config
 from .const import CONF_AUTO_SEND, DEFAULT_AUTO_SEND, DOMAIN, SIGNAL_AUTOSEND_UPDATED, TOLINO_CONVERTIBLE, TOLINO_FORMATS
 from .notify_helper import async_push
 from .tolino_send import SendError, async_send_to_tolino
@@ -49,7 +50,7 @@ class AutoSender:
 
     @property
     def enabled(self) -> bool:
-        cfg = get_config(self._hass)
+        cfg = tolino_config(self._hass)
         return bool(cfg.get(CONF_AUTO_SEND, DEFAULT_AUTO_SEND)) and TolinoBridgeClient(self._hass, cfg).configured
 
     async def async_start(self) -> None:
@@ -99,7 +100,7 @@ class AutoSender:
     async def async_run(self) -> dict:
         summary = {"checked": 0, "sent": [], "failed": [], "skipped": []}
         registry = self._hass.data[DOMAIN]["tolino_sent"]
-        abs_client = AbsClient(self._hass, get_config(self._hass))
+        abs_client = AbsClient(self._hass, tolino_config(self._hass))
         try:
             items = await self._candidates(abs_client)
         except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:

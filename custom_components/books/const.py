@@ -10,6 +10,15 @@ CONF_KOMGA_URL = "komga_url"
 CONF_KOMGA_API_KEY = "komga_api_key"
 CONF_MYLAR_URL = "mylar_url"
 CONF_MYLAR_API_KEY = "mylar_api_key"
+
+# Per-person accounts (config subentries): which Home Assistant user reads with which Komga / Audiobookshelf account.
+SUBENTRY_USER = "user"
+CONF_HA_USER = "ha_user"
+CONF_USER_TOLINO = "tolino"          # this person uses the Tolino bridge
+CONF_KOMGA_NAME = "komga_name"       # who the key belongs to, shown as a check when saving
+CONF_ABS_NAME = "abs_name"
+WISH_MAX_AGE_SECONDS = 30 * 24 * 3600
+WISH_INTERVAL_SECONDS = 5 * 60
 CONF_TOLINO_URL = "tolino_url"
 CONF_TOLINO_TOKEN = "tolino_token"
 CONF_VERIFY_SSL = "verify_ssl"

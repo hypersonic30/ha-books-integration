@@ -126,5 +126,70 @@
         "name": "Last auto-sent book"
       }
     }
+  },
+  "config_subentries": {
+    "user": {
+      "entry_type": "Person",
+      "initiate_flow": {
+        "user": "Add person",
+        "reconfigure": "Edit person"
+      },
+      "step": {
+        "user": {
+          "title": "Add person",
+          "description": "Every person gets their own accounts, so nobody can change somebody else's reading progress. Empty fields = the shared account from the main settings.",
+          "data": {
+            "ha_user": "Home Assistant user",
+            "komga_api_key": "Komga API key (optional)",
+            "abs_token": "Audiobookshelf token (optional)",
+            "notify_service": "Notification (optional)",
+            "tolino": "Uses the Tolino bridge",
+            "notify_test": "Send a test message"
+          },
+          "data_description": {
+            "ha_user": "Whoever signs in to Home Assistant with this account.",
+            "komga_api_key": "Komga -> Account Settings -> API Keys of this person. Empty = the shared account from the main settings.",
+            "abs_token": "Audiobookshelf -> this person's user -> API token. Empty = the shared account from the main settings.",
+            "notify_service": "e.g. notify.mobile_app_annas_phone - this is where \"your book is here\" goes. Separate several with commas.",
+            "tolino": "Shows \"send to tolino\" and runs auto-send and progress sync with this person's account. Needs a bridge in the main settings.",
+            "notify_test": "Sends a test message to the notification target when saving."
+          }
+        },
+        "reconfigure": {
+          "title": "Edit {person}",
+          "description": "Every person gets their own accounts, so nobody can change somebody else's reading progress. Empty fields = the shared account from the main settings.",
+          "data": {
+            "komga_api_key": "Komga API key (optional)",
+            "abs_token": "Audiobookshelf token (optional)",
+            "notify_service": "Notification (optional)",
+            "tolino": "Uses the Tolino bridge",
+            "notify_test": "Send a test message"
+          },
+          "data_description": {
+            "komga_api_key": "Komga -> Account Settings -> API Keys of this person. Empty = the shared account from the main settings.",
+            "abs_token": "Audiobookshelf -> this person's user -> API token. Empty = the shared account from the main settings.",
+            "notify_service": "e.g. notify.mobile_app_annas_phone - this is where \"your book is here\" goes. Separate several with commas.",
+            "tolino": "Shows \"send to tolino\" and runs auto-send and progress sync with this person's account. Needs a bridge in the main settings.",
+            "notify_test": "Sends a test message to the notification target when saving."
+          }
+        }
+      },
+      "error": {
+        "komga_cannot_connect": "Could not connect to Komga at the URL from the main settings",
+        "komga_invalid_auth": "Komga rejected the API key",
+        "not_komga": "The Komga URL is not a Komga server",
+        "komga_not_configured": "No Komga URL is set in the main settings yet",
+        "abs_cannot_connect": "Could not connect to Audiobookshelf at the URL from the main settings",
+        "abs_invalid_auth": "Audiobookshelf rejected the token",
+        "ssl_error": "SSL error (certificate)",
+        "tolino_bridge_required": "This needs a tolino bridge in the main settings",
+        "notify_unknown": "That notification service does not exist"
+      },
+      "abort": {
+        "no_users_left": "Every Home Assistant user is already added",
+        "already_configured": "This person is already added",
+        "reconfigure_successful": "Saved"
+      }
+    }
   }
 }

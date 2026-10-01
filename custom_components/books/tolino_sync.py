@@ -25,7 +25,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util import dt as dt_util
 
-from .api import AbsClient, TolinoBridgeClient, UpstreamError, get_config
+from .api import AbsClient, TolinoBridgeClient, UpstreamError
+from .users import tolino_config
 from .const import (
     CONF_SYNC_PROGRESS,
     CONF_SYNC_PROGRESS_WRITE,
@@ -52,12 +53,12 @@ class ProgressSync:
 
     @property
     def enabled(self) -> bool:
-        cfg = get_config(self._hass)
+        cfg = tolino_config(self._hass)
         return bool(cfg.get(CONF_SYNC_PROGRESS, DEFAULT_SYNC_PROGRESS)) and TolinoBridgeClient(self._hass, cfg).configured
 
     @property
     def write_enabled(self) -> bool:
-        return self.enabled and bool(get_config(self._hass).get(CONF_SYNC_PROGRESS_WRITE, DEFAULT_SYNC_PROGRESS_WRITE))
+        return self.enabled and bool(tolino_config(self._hass).get(CONF_SYNC_PROGRESS_WRITE, DEFAULT_SYNC_PROGRESS_WRITE))
 
     async def async_tick(self, _now=None) -> dict | None:
         if not self.enabled:
@@ -69,7 +70,7 @@ class ProgressSync:
             return None
 
     async def async_sync(self) -> dict:
-        cfg = get_config(self._hass)
+        cfg = tolino_config(self._hass)
         registry = self._hass.data[DOMAIN]["tolino_sent"]
         write = self.write_enabled
         summary = {"checked": 0, "imported": [], "exported": [], "skipped": []}
