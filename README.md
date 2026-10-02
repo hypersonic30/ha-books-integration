@@ -144,6 +144,12 @@ switches of the person), each with that person's Audiobookshelf account.
   user needs the "update" permission** (not admin; without it the notification still comes, the tag is just missing and a warning is logged).
   The proxy still refuses every write to Audiobookshelf items.
 
+- **Import from tolino (per person, off by default, needs bridge >= 0.8.0)**: with "Import ebooks from tolino" on, the person's tolino
+  purchases and free ebooks (no audiobooks, not the books that came from Audiobookshelf in the first place) are downloaded through the bridge
+  (the watermark file is dropped), uploaded to the "eBooks" library of Audiobookshelf and tagged `für NAME`. Switching it on takes the whole
+  stock once (3 books every 10 minutes), later purchases follow by themselves; a book whose title is already in Audiobookshelf is skipped.
+  Imported books are never sent back to tolino. The shared Audiobookshelf user needs the **"upload" and "update"** permissions (not admin).
+
 #### Thalia accounts from Home Assistant
 
 Settings → Devices & Services → Books → **Manage Thalia accounts** (needs tolino-bridge ≥ 0.7.0). A menu offers what makes sense:

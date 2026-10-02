@@ -11,6 +11,7 @@ from .api import get_config
 from .const import (
     CONF_ABS_TOKEN,
     CONF_AUTO_SEND,
+    CONF_IMPORT_TOLINO,
     CONF_SYNC_PROGRESS,
     CONF_SYNC_PROGRESS_WRITE,
     CONF_HA_USER,
@@ -102,6 +103,6 @@ def tolino_config(hass: HomeAssistant, account: str = DEFAULT_TOLINO_ACCOUNT) ->
     uid = tolino_user_id(hass, account)
     if uid is None:
         return {**cfg, CONF_TOLINO_URL: "", CONF_TOLINO_TOKEN: "",
-                CONF_AUTO_SEND: False, CONF_SYNC_PROGRESS: False, CONF_SYNC_PROGRESS_WRITE: False}
+                CONF_AUTO_SEND: False, CONF_SYNC_PROGRESS: False, CONF_SYNC_PROGRESS_WRITE: False, CONF_IMPORT_TOLINO: False}
     person = get_users(hass)[uid]
-    return {**config_for(hass, uid), **{k: bool(person.get(k)) for k in (CONF_AUTO_SEND, CONF_SYNC_PROGRESS, CONF_SYNC_PROGRESS_WRITE)}}
+    return {**config_for(hass, uid), **{k: bool(person.get(k)) for k in (CONF_AUTO_SEND, CONF_SYNC_PROGRESS, CONF_SYNC_PROGRESS_WRITE, CONF_IMPORT_TOLINO)}}

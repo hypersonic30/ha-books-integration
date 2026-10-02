@@ -136,7 +136,8 @@
             "auto_send": "Send new ebooks automatically",
             "sync_progress": "Take reading progress from tolino",
             "sync_progress_write": "Send reading progress to tolino",
-            "tolino_account": "Tolino account in the bridge (optional)"
+            "tolino_account": "Tolino account in the bridge (optional)",
+            "import_tolino": "Import ebooks from tolino"
           },
           "data_description": {
             "ha_user": "Whoever signs in to Home Assistant with this account.",
@@ -148,7 +149,8 @@
             "auto_send": "New ebooks in Audiobookshelf are sent to this tolino automatically. Only books added AFTER you switch it on. Needs \"Uses the Tolino bridge\".",
             "sync_progress": "Imports reading position and 'finished' of the books sent to tolino into Audiobookshelf (and the card). Needs \"Uses the Tolino bridge\".",
             "sync_progress_write": "Sends your state from Audiobookshelf (what you read in the card) to tolino. Needs the option above.",
-            "tolino_account": "Name of this person's Thalia account in the bridge (on Unraid: deploy.sh account add NAME). Empty = the bridge's default account. Every person needs their own account."
+            "tolino_account": "Name of this person's Thalia account in the bridge (on Unraid: deploy.sh account add NAME). Empty = the bridge's default account. Every person needs their own account.",
+            "import_tolino": "Takes the ebooks in this person's tolino account (purchases and free ones, no audiobooks) into Audiobookshelf and tags them for this person. Switching it on imports the whole stock once; later purchases follow by themselves. What is already in Audiobookshelf is skipped. Needs \"Uses the Tolino bridge\" and the \"update\" and \"upload\" permissions for the shared Audiobookshelf user."
           }
         },
         "reconfigure": {
@@ -163,7 +165,8 @@
             "auto_send": "Send new ebooks automatically",
             "sync_progress": "Take reading progress from tolino",
             "sync_progress_write": "Send reading progress to tolino",
-            "tolino_account": "Tolino account in the bridge (optional)"
+            "tolino_account": "Tolino account in the bridge (optional)",
+            "import_tolino": "Import ebooks from tolino"
           },
           "data_description": {
             "komga_api_key": "Komga -> Account Settings -> API Keys of this person. Empty = the shared account from the main settings.",
@@ -174,7 +177,8 @@
             "auto_send": "New ebooks in Audiobookshelf are sent to this tolino automatically. Only books added AFTER you switch it on. Needs \"Uses the Tolino bridge\".",
             "sync_progress": "Imports reading position and 'finished' of the books sent to tolino into Audiobookshelf (and the card). Needs \"Uses the Tolino bridge\".",
             "sync_progress_write": "Sends your state from Audiobookshelf (what you read in the card) to tolino. Needs the option above.",
-            "tolino_account": "Name of this person's Thalia account in the bridge (on Unraid: deploy.sh account add NAME). Empty = the bridge's default account. Every person needs their own account."
+            "tolino_account": "Name of this person's Thalia account in the bridge (on Unraid: deploy.sh account add NAME). Empty = the bridge's default account. Every person needs their own account.",
+            "import_tolino": "Takes the ebooks in this person's tolino account (purchases and free ones, no audiobooks) into Audiobookshelf and tags them for this person. Switching it on imports the whole stock once; later purchases follow by themselves. What is already in Audiobookshelf is skipped. Needs \"Uses the Tolino bridge\" and the \"update\" and \"upload\" permissions for the shared Audiobookshelf user."
           }
         }
       },

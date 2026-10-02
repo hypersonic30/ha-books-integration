@@ -87,6 +87,10 @@ async def async_send_to_tolino(hass: HomeAssistant, item_id: str, force: bool = 
     if not bridge.configured:
         raise SendError("not_configured", "The Tolino bridge is not configured", 503)
 
+    importer = (hass.data.get(DOMAIN, {}).get("jobs", {}).get(account) or {}).get("import")
+    if importer and importer.is_imported(item_id):
+        raise SendError("already_sent", "This book came from your tolino account", 409)
+
     registry = await async_ensure_registry(hass, account)
     prior = registry.get(item_id)
     if prior and not force:

@@ -113,7 +113,7 @@ class AutoSender:
         allowed = TOLINO_FORMATS | TOLINO_CONVERTIBLE
         for item in items:
             item_id = item["id"]
-            if registry.get(item_id) or self.state["failed"].get(item_id):
+            if registry.get(item_id) or self.state["failed"].get(item_id) or self._imported(item_id):
                 continue
             if str((item.get("media") or {}).get("ebookFormat") or "").lower() not in allowed:
                 continue                                       # no ebook (yet), or a format nobody can convert
@@ -142,6 +142,11 @@ class AutoSender:
         self.last_run = {"at": dt_util.utcnow(), **{k: len(v) if isinstance(v, list) else v for k, v in summary.items()}}
         async_dispatcher_send(self._hass, SIGNAL_AUTOSEND_UPDATED)
         return summary
+
+    def _imported(self, item_id: str) -> bool:
+        """Books imported FROM this tolino account must not be sent back to it."""
+        importer = (self._hass.data.get(DOMAIN, {}).get("jobs", {}).get(self.account) or {}).get("import")
+        return bool(importer and importer.is_imported(item_id))
 
     async def _report(self, item_id: str, title: str, exc: SendError) -> None:
         self.state["failed"][item_id] = {"error": exc.code, "at": int(time.time() * 1000)}

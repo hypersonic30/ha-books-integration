@@ -415,6 +415,7 @@ async def test_turning_the_switch_off_and_on_again_starts_over(hass, household, 
     ("cara", {"tolino": True}, {"tolino_account": "tolino_account_taken"}),                     # Anna already has the default account
     ("ben", {"auto_send": True}, {"auto_send": "tolino_person_required"}),
     ("ben", {"sync_progress": True}, {"sync_progress": "tolino_person_required"}),
+    ("ben", {"import_tolino": True}, {"import_tolino": "tolino_person_required"}),
     ("anna", {"sync_progress_write": True, "sync_progress": False}, {"sync_progress_write": "sync_progress_required"}),
 ])
 async def test_tolino_rules_in_the_person_form(hass, household, cast, aioclient_mock, who, extra, errors):

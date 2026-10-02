@@ -38,6 +38,7 @@ from .const import (
     CONF_ABS_TOKEN,
     CONF_ABS_URL,
     CONF_AUTO_SEND,
+    CONF_IMPORT_TOLINO,
     CONF_CHAPTARR_API_KEY,
     CONF_CHAPTARR_URL,
     CONF_DEBUG_LOGGING,
@@ -360,6 +361,7 @@ class UserSubentryFlow(ConfigSubentryFlow):
                 SelectSelector(SelectSelectorConfig(options=[SelectOptionDict(value=n, label=n) for n in accounts],
                                                     custom_value=True, mode="dropdown")) if accounts else str),
             vol.Required(CONF_AUTO_SEND, default=bool(shown.get(CONF_AUTO_SEND, False))): bool,
+            vol.Required(CONF_IMPORT_TOLINO, default=bool(shown.get(CONF_IMPORT_TOLINO, False))): bool,
             vol.Required(CONF_SYNC_PROGRESS, default=bool(shown.get(CONF_SYNC_PROGRESS, False))): bool,
             vol.Required(CONF_SYNC_PROGRESS_WRITE, default=bool(shown.get(CONF_SYNC_PROGRESS_WRITE, False))): bool,
             vol.Required("notify_test", default=False): bool,
@@ -381,6 +383,7 @@ class UserSubentryFlow(ConfigSubentryFlow):
             CONF_USER_TOLINO: bool(user_input.get(CONF_USER_TOLINO)),
             CONF_TOLINO_ACCOUNT: (user_input.get(CONF_TOLINO_ACCOUNT) or "").strip(),
             CONF_AUTO_SEND: bool(user_input.get(CONF_AUTO_SEND)),
+            CONF_IMPORT_TOLINO: bool(user_input.get(CONF_IMPORT_TOLINO)),
             CONF_SYNC_PROGRESS: bool(user_input.get(CONF_SYNC_PROGRESS)),
             CONF_SYNC_PROGRESS_WRITE: bool(user_input.get(CONF_SYNC_PROGRESS_WRITE)),
             "notify_test": bool(user_input.get("notify_test")),
@@ -415,7 +418,7 @@ class UserSubentryFlow(ConfigSubentryFlow):
                 errors[CONF_TOLINO_ACCOUNT] = "tolino_account_unknown"
         elif data[CONF_TOLINO_ACCOUNT]:
             errors[CONF_TOLINO_ACCOUNT] = "tolino_person_required"
-        for key in (CONF_AUTO_SEND, CONF_SYNC_PROGRESS, CONF_SYNC_PROGRESS_WRITE):
+        for key in (CONF_AUTO_SEND, CONF_IMPORT_TOLINO, CONF_SYNC_PROGRESS, CONF_SYNC_PROGRESS_WRITE):
             if data[key] and not data[CONF_USER_TOLINO]:
                 errors[key] = "tolino_person_required"
         if data[CONF_SYNC_PROGRESS_WRITE] and not data[CONF_SYNC_PROGRESS]:

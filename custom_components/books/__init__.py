@@ -14,6 +14,7 @@ from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
     AUTO_SEND_INTERVAL_SECONDS,
+    IMPORT_INTERVAL_SECONDS,
     WISH_INTERVAL_SECONDS,
     CONF_DEBUG_LOGGING,
     DEFAULT_TOLINO_ACCOUNT,
@@ -100,7 +101,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for jobs in list(data["jobs"].values()):
             await jobs["auto_send"].async_tick(now)
 
+    async def _tick_import(now=None) -> None:
+        for jobs in list(data["jobs"].values()):
+            await jobs["import"].async_tick(now)
+
     entry.async_on_unload(async_track_time_interval(hass, _tick_sync, timedelta(seconds=SYNC_INTERVAL_SECONDS)))
+    entry.async_on_unload(async_track_time_interval(hass, _tick_import, timedelta(seconds=IMPORT_INTERVAL_SECONDS)))
     entry.async_on_unload(async_track_time_interval(hass, _tick_auto_send, timedelta(seconds=AUTO_SEND_INTERVAL_SECONDS)))
 
     rescue = data.get("rescue") or ImportRescue(hass)

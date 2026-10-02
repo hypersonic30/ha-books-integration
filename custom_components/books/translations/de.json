@@ -136,7 +136,8 @@
             "auto_send": "Neue E-Books automatisch senden",
             "sync_progress": "Lesefortschritt von tolino übernehmen",
             "sync_progress_write": "Lesefortschritt zu tolino senden",
-            "tolino_account": "Tolino-Konto in der Bridge (optional)"
+            "tolino_account": "Tolino-Konto in der Bridge (optional)",
+            "import_tolino": "E-Books aus tolino importieren"
           },
           "data_description": {
             "ha_user": "Wer sich in Home Assistant mit diesem Konto anmeldet.",
@@ -148,7 +149,8 @@
             "auto_send": "Neue E-Books in Audiobookshelf gehen automatisch an dieses tolino. Nur Bücher, die NACH dem Einschalten dazukommen. Braucht „Nutzt die Tolino-Bridge“.",
             "sync_progress": "Übernimmt Leseposition und „Gelesen“ der gesendeten Bücher von tolino in Audiobookshelf (und die Card). Braucht „Nutzt die Tolino-Bridge“.",
             "sync_progress_write": "Schickt deinen Stand aus Audiobookshelf (was du in der Card liest) zu tolino. Braucht die Option darüber.",
-            "tolino_account": "Name des Thalia-Kontos dieser Person in der Bridge (auf Unraid: deploy.sh account add NAME). Leer = das Standardkonto der Bridge. Jede Person braucht ihr eigenes Konto."
+            "tolino_account": "Name des Thalia-Kontos dieser Person in der Bridge (auf Unraid: deploy.sh account add NAME). Leer = das Standardkonto der Bridge. Jede Person braucht ihr eigenes Konto.",
+            "import_tolino": "Holt die E-Books aus dem tolino-Konto dieser Person (Käufe und Gratisbücher, keine Hörbücher) nach Audiobookshelf und markiert sie für diese Person. Beim Einschalten kommt einmal der ganze Bestand, später neue Käufe von selbst. Was schon in Audiobookshelf ist, wird übersprungen. Braucht „Nutzt die Tolino-Bridge“ und die Rechte „Hochladen“ und „Aktualisieren“ für den gemeinsamen Audiobookshelf-Benutzer."
           }
         },
         "reconfigure": {
@@ -163,7 +165,8 @@
             "auto_send": "Neue E-Books automatisch senden",
             "sync_progress": "Lesefortschritt von tolino übernehmen",
             "sync_progress_write": "Lesefortschritt zu tolino senden",
-            "tolino_account": "Tolino-Konto in der Bridge (optional)"
+            "tolino_account": "Tolino-Konto in der Bridge (optional)",
+            "import_tolino": "E-Books aus tolino importieren"
           },
           "data_description": {
             "komga_api_key": "Komga → Kontoeinstellungen → API-Schlüssel dieser Person. Leer = das gemeinsame Konto aus den Haupteinstellungen.",
@@ -174,7 +177,8 @@
             "auto_send": "Neue E-Books in Audiobookshelf gehen automatisch an dieses tolino. Nur Bücher, die NACH dem Einschalten dazukommen. Braucht „Nutzt die Tolino-Bridge“.",
             "sync_progress": "Übernimmt Leseposition und „Gelesen“ der gesendeten Bücher von tolino in Audiobookshelf (und die Card). Braucht „Nutzt die Tolino-Bridge“.",
             "sync_progress_write": "Schickt deinen Stand aus Audiobookshelf (was du in der Card liest) zu tolino. Braucht die Option darüber.",
-            "tolino_account": "Name des Thalia-Kontos dieser Person in der Bridge (auf Unraid: deploy.sh account add NAME). Leer = das Standardkonto der Bridge. Jede Person braucht ihr eigenes Konto."
+            "tolino_account": "Name des Thalia-Kontos dieser Person in der Bridge (auf Unraid: deploy.sh account add NAME). Leer = das Standardkonto der Bridge. Jede Person braucht ihr eigenes Konto.",
+            "import_tolino": "Holt die E-Books aus dem tolino-Konto dieser Person (Käufe und Gratisbücher, keine Hörbücher) nach Audiobookshelf und markiert sie für diese Person. Beim Einschalten kommt einmal der ganze Bestand, später neue Käufe von selbst. Was schon in Audiobookshelf ist, wird übersprungen. Braucht „Nutzt die Tolino-Bridge“ und die Rechte „Hochladen“ und „Aktualisieren“ für den gemeinsamen Audiobookshelf-Benutzer."
           }
         }
       },

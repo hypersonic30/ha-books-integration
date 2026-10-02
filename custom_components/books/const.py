@@ -29,6 +29,7 @@ CONF_RESCUE_IMPORTS = "rescue_imports"
 CONF_NOTIFY_SERVICE = "notify_service"
 CONF_DEBUG_LOGGING = "debug_logging"
 CONF_AUTO_SEND = "auto_send"
+CONF_IMPORT_TOLINO = "import_tolino"
 CONF_SYNC_PROGRESS = "sync_progress"
 CONF_SYNC_PROGRESS_WRITE = "sync_progress_write"
 
@@ -62,6 +63,7 @@ EVENT_PROGRESS_SYNCED = "books_tolino_progress_synced"
 RESCUE_INTERVAL_SECONDS = 120
 SYNC_INTERVAL_SECONDS = 600
 AUTO_SEND_INTERVAL_SECONDS = 600
+IMPORT_INTERVAL_SECONDS = 600
 
 # Chaptarr API areas the card never needs. They hold indexer/download-client
 # credentials or can reconfigure/shut down Chaptarr, so the proxy refuses them
