@@ -6,7 +6,9 @@ see the bridge's purchases.py), uploaded to the ebook library with Audiobookshel
 so the Books card shows them under that person. What is already in Audiobookshelf (same title) is not uploaded again. Switching it
 on takes the whole stock once; at most MAX_PER_RUN books per run, so a big account just takes a few runs.
 
-Imported books are never sent back: the auto-send job and the card's "An tolino" know them (`is_imported`).
+Imported books are never sent back: the auto-send job and the card's "An tolino" know them (`is_imported`). They are also entered in the
+account's registry of sent books (cloud id = the purchase's publication id), so the reading-progress sync (tolino_sync.py) treats them like
+any other book of this account: same file in Audiobookshelf and on the device, so positions map exactly.
 Needs the "update" and "upload" permissions of the shared Audiobookshelf user (never admin)."""
 from __future__ import annotations
 
@@ -29,6 +31,7 @@ from .api import AbsClient, TolinoBridgeClient, UpstreamError, get_config
 from .const import CONF_IMPORT_TOLINO, CONF_NOTIFY_SERVICE, DEFAULT_TOLINO_ACCOUNT, DOMAIN
 from .notify_helper import async_push
 from .tags import async_tag_item, person_tag
+from .tolino_registry import async_ensure_registry
 from .tolino_send import _bridge_error
 from .users import get_users, tolino_config, tolino_user_id
 from .wishes import _norm
@@ -93,7 +96,16 @@ class TolinoImporter:
         return bool(cfg.get(CONF_IMPORT_TOLINO)) and TolinoBridgeClient(self._hass, cfg, self.account).configured
 
     def is_imported(self, item_id: str) -> bool:
-        return any(v.get("item_id") == item_id for v in self.state["done"].values())
+        return self.imported_at(item_id) is not None
+
+    def imported_at(self, item_id: str) -> str | None:
+        return next((v.get("at") or "" for v in self.state["done"].values() if v.get("item_id") == item_id), None)
+
+    async def _register(self, item_id: str, publication_id: str) -> None:
+        """Enter the book in the account's registry of books that are on both sides (what the progress sync works from)."""
+        registry = await async_ensure_registry(self._hass, self.account)
+        if not registry.get(item_id):
+            await registry.async_set(item_id, publication_id, "imported.epub")
 
     async def async_start(self) -> None:
         """Load the state; a new owner of the account starts from scratch (their cloud is a different one)."""
@@ -110,6 +122,9 @@ class TolinoImporter:
         elif not self.enabled and self.state.get("active"):
             self.state["active"] = False
             await self._store.async_save(self.state)
+        for pid, entry in self.state["done"].items():                    # books imported before they were registered
+            if entry.get("how") == "imported" and entry.get("item_id"):
+                await self._register(entry["item_id"], pid)
 
     async def async_tick(self, _now=None) -> dict | None:
         if not self.enabled or self._running.locked():
@@ -178,6 +193,8 @@ class TolinoImporter:
                 summary["already"].append(title)
                 continue
             self.state["done"][pid] = {"title": title, "at": dt_util.utcnow().isoformat(), "how": "imported", "item_id": item_id}
+            if item_id:
+                await self._register(item_id, pid)
             known.add(_norm(title))
             summary["imported"].append(title)
             await self._store.async_save(self.state)                     # after every book: a restart must not repeat uploads
@@ -284,6 +301,7 @@ class TolinoImporter:
             for item in (data or {}).get("results", []):
                 if _norm(((item.get("media") or {}).get("metadata") or {}).get("title", "")) == _norm(entry["title"]):
                     entry["item_id"] = item["id"]
+                    await self._register(item["id"], pid)
                     await self._tag(abs_client, item["id"], tag)
                     break
 

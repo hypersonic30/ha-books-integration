@@ -89,7 +89,7 @@ async def async_send_to_tolino(hass: HomeAssistant, item_id: str, force: bool = 
 
     importer = (hass.data.get(DOMAIN, {}).get("jobs", {}).get(account) or {}).get("import")
     if importer and importer.is_imported(item_id):
-        raise SendError("already_sent", "This book came from your tolino account", 409)
+        raise SendError("already_sent", "This book came from your tolino account", 409, sent_at=importer.imported_at(item_id) or "")
 
     registry = await async_ensure_registry(hass, account)
     prior = registry.get(item_id)

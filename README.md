@@ -148,7 +148,9 @@ switches of the person), each with that person's Audiobookshelf account.
   purchases and free ebooks (no audiobooks, not the books that came from Audiobookshelf in the first place) are downloaded through the bridge
   (the watermark file is dropped), uploaded to the "eBooks" library of Audiobookshelf and tagged `für NAME`. Switching it on takes the whole
   stock once (3 books every 10 minutes), later purchases follow by themselves; a book whose title is already in Audiobookshelf is skipped.
-  Imported books are never sent back to tolino. The shared Audiobookshelf user needs the **"upload" and "update"** permissions (not admin).
+  Imported books are never sent back to tolino. They take part in the reading-progress sync like books sent from Audiobookshelf (switches
+  "Take reading progress from tolino" / "Send reading progress to tolino" of the person; needs bridge >= 0.8.0): same file on both sides, so
+  the position is exact. The shared Audiobookshelf user needs the **"upload" and "update"** permissions (not admin).
 
 #### Thalia accounts from Home Assistant
 

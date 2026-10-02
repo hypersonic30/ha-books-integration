@@ -108,6 +108,7 @@ async def test_a_purchase_is_uploaded_tagged_for_the_person_and_remembered(hass,
     patch = calls(aioclient_mock, "PATCH", "/api/items/new1/media")
     assert [c[2] for c in patch] == [{"tags": [person_tag(owner)]}]
     assert job.state["done"]["DT0400.1_A1"]["item_id"] == "new1" and job.is_imported("new1")
+    assert hass.data[DOMAIN]["registries"]["default"].get("new1")["deliverableId"] == "DT0400.1_A1"     # the progress sync works from this
     again = await job.async_run()                                                          # second run: nothing new
     assert again["imported"] == [] and len(calls(aioclient_mock, "POST", "/api/upload")) == 1
 
@@ -231,3 +232,35 @@ async def test_the_books_own_title_counts_for_the_duplicate_check(hass, monkeypa
     summary = await job.async_run()
     assert summary["already"] == ["Feenspiele - der Fantasy Bestseller"] and summary["imported"] == []
     assert not calls(aioclient_mock, "POST", "/api/upload") and job.state["done"]["DT0400.1_A1"]["how"] == "already_in_abs"
+
+
+async def test_a_late_found_upload_is_registered_too(hass, monkeypatch, aioclient_mock):
+    job = await _setup(hass, monkeypatch)
+    bridge_mocks(aioclient_mock, [purchase(1, "Flüsterwald")])
+    abs_mocks(aioclient_mock, [])
+    await job.async_run()
+    registry = hass.data[DOMAIN]["registries"]["default"]
+    assert registry.get("new1") is None                                                    # not found yet: nothing to register
+    aioclient_mock.clear_requests()
+    bridge_mocks(aioclient_mock, [purchase(1, "Flüsterwald")])
+    abs_mocks(aioclient_mock, [new_item("Flüsterwald")])
+    await job.async_run()
+    assert registry.get("new1")["deliverableId"] == "DT0400.1_A1"
+
+
+async def test_books_imported_earlier_are_registered_on_start(hass, monkeypatch, aioclient_mock):
+    job = await _setup(hass, monkeypatch)
+    job.state["done"]["DT0400.7_A1"] = {"title": "Alt", "item_id": "old7", "how": "imported", "at": "x"}
+    job.state["done"]["DT0400.8_A1"] = {"title": "Schon da", "item_id": None, "how": "already_in_abs", "at": "x"}
+    await job._store.async_save(job.state)                                                  # a restart reads it back from storage
+    await job.async_start()
+    registry = hass.data[DOMAIN]["registries"]["default"]
+    assert registry.get("old7")["deliverableId"] == "DT0400.7_A1" and len(registry.items) == 1   # books that were only skipped are not linked
+
+
+async def test_the_card_gets_the_import_date_when_it_asks_to_send_an_imported_book(hass, monkeypatch, aioclient_mock):
+    job = await _setup(hass, monkeypatch)
+    job.state["done"]["DT0400.1_A1"] = {"title": "Buch 1", "item_id": "new1", "how": "imported", "at": "2026-10-02T10:00:00"}
+    with pytest.raises(SendError) as exc:
+        await async_send_to_tolino(hass, "new1", account="default")
+    assert exc.value.extra == {"sent_at": "2026-10-02T10:00:00"}
