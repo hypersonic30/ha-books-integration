@@ -26,7 +26,8 @@ from .chaptarr_policy import chaptarr_allowed
 from .komga_policy import komga_allowed
 from .mylar_policy import mylar_request
 from .tolino_registry import async_ensure_registry
-from .users import NO_PERSON, access_denied, account_for_user, config_for, tolino_allowed, user_of
+from .tags import person_tag
+from .users import NO_PERSON, access_denied, account_for_user, config_for, get_users, tolino_allowed, user_of
 from .tolino_send import SendError, async_send_to_tolino
 from .const import (
     CHAPTARR_ALLOWED_COMMANDS,
@@ -546,6 +547,25 @@ class TolinoAutoSendView(HomeAssistantView):
             return web.json_response({"error": "Auto-send is switched off or no Tolino bridge is configured",
                                       "code": "autosend_disabled"}, status=409)
         return web.json_response(await job.async_run())
+
+
+class PeopleView(HomeAssistantView):
+    """GET /api/books/people — who the library chips are for: every person with their tag, and which one is the asker."""
+
+    url = "/api/books/people"
+    name = "api:books:people"
+    requires_auth = True
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self._hass = hass
+
+    async def get(self, request: web.Request) -> web.Response:
+        me = user_of(request)
+        if access_denied(self._hass, me):
+            return web.json_response(NO_PERSON, status=403)
+        people = [{"name": p["_name"], "tag": tag, "me": uid == me}
+                  for uid, p in get_users(self._hass).items() if (tag := person_tag(p))]
+        return web.json_response({"people": people})
 
 
 class RescueStatusView(HomeAssistantView):

@@ -21,6 +21,7 @@ from .api import AbsClient, UpstreamError, get_config
 from .auth_watch import key_accepted, key_rejected
 from .const import CONF_MYLAR_API_KEY, CONF_MYLAR_URL, CONF_NOTIFY_SERVICE, CONF_VERIFY_SSL, DOMAIN, REQUEST_TIMEOUT, WISH_MAX_AGE_SECONDS
 from .notify_helper import async_push
+from .tags import async_tag_item, person_tag
 from .users import get_users
 
 _LOGGER = logging.getLogger(__name__)
@@ -109,8 +110,20 @@ class Wishes:
                 title = ((item.get("media") or {}).get("metadata") or {}).get("title", "")
                 if int(item.get("addedAt") or 0) >= wish["ts"] * 1000 - CLOCK_SKEW_MS and titles_match(wish["title"], title):
                     out.append((wish, title or wish["title"]))
+                    await self._tag(client, item.get("id"), wish["user"])
                     break
         return out
+
+    async def _tag(self, client: AbsClient, item_id: str | None, user_id: str) -> None:
+        """The arrived book is for the person who asked (best effort: the notification must not depend on it)."""
+        tag = person_tag(get_users(self._hass).get(user_id))
+        if not tag or not item_id:
+            return
+        try:
+            await async_tag_item(client, item_id, tag)
+        except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
+            _LOGGER.warning("books: cannot tag the new book for %s (the Audiobookshelf user of the main settings needs the "
+                            "'update' permission): %s", tag, exc)
 
     async def _manga_arrived(self, wishes: list[dict]) -> list[tuple[dict, str]]:
         cfg = get_config(self._hass)

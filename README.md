@@ -138,6 +138,11 @@ switches of the person), each with that person's Audiobookshelf account.
 - A push "Neu in der Bibliothek" goes to the person who asked for a book or manga volume when it arrives (also fired as the event
   `books_wish_fulfilled`). Books are recognised by title and author - a comparison, not a hard link - manga volumes exactly. Nobody is told
   what the others load.
+- **One library, a tag per person**: when a book somebody asked for arrives in Audiobookshelf it gets the tag `für NAME` (the person's name),
+  so the Books card can show *Alle / Für mich / each person* as chips. Books without such a tag (the existing stock, or loaded in Chaptarr
+  directly) are for everybody. The tags are written by the integration with the shared Audiobookshelf user of the main settings - **that
+  user needs the "update" permission** (not admin; without it the notification still comes, the tag is just missing and a warning is logged).
+  The proxy still refuses every write to Audiobookshelf items.
 
 #### Thalia accounts from Home Assistant
 
@@ -196,6 +201,7 @@ Change anything later with the integration's **Reconfigure** action; it applies 
 | `POST /api/books/add` | adds a search result as ebook/audiobook, "only this book" |
 | `/api/books/komga/{path}` | Komga `/api/{path}` — reading, progress, rescan only (strict allow-list; the person's own key) |
 | `/api/books/mylar/{command}` | Mylar3 `/api?cmd={command}` — search, add, queue volumes (allow-list per command and parameter; slow searches answer `202` and run in the background) |
+| `GET /api/books/people` | the people with their tag (`name`, `tag`, `me`) - what the card's person chips are built from |
 | `GET /api/books/tolino` | status of the asking person's tolino account (`enabled` is false for people without a tolino; `reachable`, `logged_in`, `error`, `sent`) |
 | `POST /api/books/tolino` `{abs_item_id, force?}` (409 `already_sent` if it is still in the cloud; `force` replaces the cloud copy) | sends that item's EPUB/PDF to the Tolino Cloud (errors carry a `code`: `bad_type`, `no_ebook`, `too_large`, `captcha`, `login_backoff`, `unreachable`, …) |
 | `POST /api/books/tolino-autosend` | runs the auto-send job of the asking person's account now (409 `autosend_disabled` if it is switched off, 403 `no_tolino` without a tolino) |

@@ -188,6 +188,8 @@ async def test_a_requested_book_notifies_only_the_person_who_asked(hass, househo
     aioclient_mock.clear_requests()
     aioclient_mock.get(f"{ABS}/api/libraries", json={"libraries": [{"id": "L1", "mediaType": "book"}]}, headers=JSON)
     aioclient_mock.get(f"{ABS}/api/libraries/L1/items", json={"results": [new("Die Chroniken von Alsea", now_ms + 1000)]}, headers=JSON)
+    aioclient_mock.get(f"{ABS}/api/items/i1", json={"id": "i1", "media": {"tags": []}}, headers=JSON)
+    aioclient_mock.patch(f"{ABS}/api/items/i1/media", json={"updated": True}, headers=JSON)
     await wishes._check()
     await hass.async_block_till_done()
     assert len(anna_msgs) == 1 and "Die Chroniken von Alsea" in anna_msgs[0].data["message"]
@@ -465,3 +467,43 @@ async def test_a_person_with_a_komga_admin_key_is_refused(hass, plain_entry, cas
     flow, result = await _add(hass, plain_entry, ha_user=cast["anna"].id, komga_api_key="k", abs_token="", notify_service="", tolino=False,
                               auto_send=False, sync_progress=False, sync_progress_write=False, tolino_account="", notify_test=False)
     assert result["errors"] == {"komga_api_key": "komga_admin"}
+
+
+# --- tags: one library, told apart by "für <name>" -------------------------------------------------------------------------------------
+
+async def _arrive(hass, cast, aioclient_mock, item_tags, patch_status=200):
+    """Anna asked for a book; it shows up in Audiobookshelf as item i1 with `item_tags`."""
+    await hass.data[DOMAIN]["wishes"].async_add("book", cast["anna"].id, title="Die Chroniken von Alsea", author="Erika Muster")
+    aioclient_mock.get(f"{ABS}/api/libraries", json={"libraries": [{"id": "L1", "mediaType": "book"}]}, headers=JSON)
+    arrived = {"id": "i1", "addedAt": int(time.time() * 1000) + 1000, "media": {"metadata": {"title": "Die Chroniken von Alsea"}}}
+    aioclient_mock.get(f"{ABS}/api/libraries/L1/items", json={"results": [arrived]}, headers=JSON)
+    aioclient_mock.get(f"{ABS}/api/items/i1", json={"id": "i1", "media": {"tags": item_tags}}, headers=JSON)
+    aioclient_mock.patch(f"{ABS}/api/items/i1/media", status=patch_status, json={}, headers=JSON)
+    await hass.data[DOMAIN]["wishes"]._check()
+    await hass.async_block_till_done()
+    return [c[2] for c in aioclient_mock.mock_calls if c[0] == "PATCH"]
+
+
+async def test_the_arrived_book_gets_the_tag_of_the_person_who_asked(hass, household, cast, aioclient_mock):
+    bodies = await _arrive(hass, cast, aioclient_mock, ["Fantasy"])
+    assert bodies == [{"tags": ["Fantasy", "für Anna"]}]                 # other tags stay
+
+
+async def test_an_already_tagged_book_is_not_written_again(hass, household, cast, aioclient_mock):
+    assert await _arrive(hass, cast, aioclient_mock, ["für Anna"]) == []
+
+
+async def test_a_refused_tag_write_does_not_stop_the_notification(hass, household, cast, aioclient_mock):
+    msgs = async_mock_service(hass, "notify", "anna_phone")
+    await _arrive(hass, cast, aioclient_mock, [], patch_status=403)      # the ABS user lacks the "update" permission
+    assert len(msgs) == 1 and hass.data[DOMAIN]["wishes"].items == []
+
+
+async def test_people_endpoint_lists_everybody_and_marks_the_asker(hass, household, cast, login):
+    body = await (await (await login(cast["ben"])).get("/api/books/people")).json()
+    assert body == {"people": [{"name": "Anna", "tag": "für Anna", "me": False}, {"name": "Ben", "tag": "für Ben", "me": True}]}
+
+
+async def test_people_endpoint_needs_a_person(hass, household, login):
+    stranger = await hass.auth.async_create_user("Stranger", group_ids=["system-users"])
+    assert (await (await login(stranger)).get("/api/books/people")).status == 403
