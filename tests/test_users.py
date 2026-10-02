@@ -502,7 +502,7 @@ async def test_a_refused_tag_write_does_not_stop_the_notification(hass, househol
 
 async def test_people_endpoint_lists_everybody_and_marks_the_asker(hass, household, cast, login):
     body = await (await (await login(cast["ben"])).get("/api/books/people")).json()
-    assert body == {"people": [{"name": "Anna", "tag": "für Anna", "me": False}, {"name": "Ben", "tag": "für Ben", "me": True}], "restricted": False}
+    assert body == {"people": [{"name": "Anna", "tag": "für Anna", "me": False}, {"name": "Ben", "tag": "für Ben", "me": True}], "restricted": False, "can_tag": True, "shared_tag": "für alle"}
 
 
 async def test_people_endpoint_needs_a_person(hass, household, login):
@@ -606,7 +606,7 @@ async def test_other_people_and_komga_are_not_affected_by_somebody_elses_lock(ha
 async def test_the_people_endpoint_tells_a_restricted_person_only_about_themselves(hass, household, cast, login):
     await _lock_ben(hass, household, cast)
     body = await (await (await login(cast["ben"])).get("/api/books/people")).json()
-    assert body == {"people": [{"name": "Ben", "tag": "für Ben", "me": True}], "restricted": True}
+    assert body == {"people": [{"name": "Ben", "tag": "für Ben", "me": True}], "restricted": True, "can_tag": False, "shared_tag": "für alle"}
 
 
 async def test_the_person_form_checks_the_lock(hass, household, cast, aioclient_mock):
@@ -630,3 +630,62 @@ async def test_the_person_form_checks_the_lock(hass, household, cast, aioclient_
     aioclient_mock.get(f"{ABS}/api/me", json={**LIMITED_ME, "username": "lena"}, headers=JSON)
     result = await save(abs_token="abs-lena")
     assert result["type"] == "abort" and household.subentries[sub.subentry_id].data["restrict_books"] is True
+
+
+# --- tagging from the card: release a book for a person or for everybody -----------------------------------------------------------------
+
+def _tag_mocks(aioclient_mock, tags, patch_status=200):
+    aioclient_mock.get(f"{ABS}/api/items/b1", json={"id": "b1", "media": {"tags": tags}}, headers=JSON)
+    aioclient_mock.patch(f"{ABS}/api/items/b1/media", status=patch_status, json={}, headers=JSON)
+
+
+def _patches(aioclient_mock):
+    return [c[2] for c in aioclient_mock.mock_calls if c[0] == "PATCH"]
+
+
+async def test_a_person_can_release_a_book_for_somebody(hass, household, cast, login, aioclient_mock):
+    _tag_mocks(aioclient_mock, ["Fantasy"])
+    resp = await (await login(cast["anna"])).post("/api/books/tags", json={"item_id": "b1", "tag": "für Ben", "tagged": True})
+    assert resp.status == 200 and (await resp.json())["tags"] == ["für Ben"]                  # only the person/shared tags go back
+    assert _patches(aioclient_mock) == [{"tags": ["Fantasy", "für Ben"]}]                     # the others stay
+    shared = household.data["abs_token"]
+    assert shared != "abs-anna" and _last_headers(aioclient_mock)["Authorization"] == f"Bearer {shared}"      # the shared user holds the update permission
+
+
+async def test_taking_a_tag_back_removes_only_that_one(hass, household, cast, login, aioclient_mock):
+    _tag_mocks(aioclient_mock, ["Fantasy", "für Ben", "für Anna", "für alle"])
+    resp = await (await login(cast["anna"])).post("/api/books/tags", json={"item_id": "b1", "tag": "für Ben", "tagged": False})
+    assert (await resp.json())["tags"] == ["für Anna", "für alle"]
+    assert _patches(aioclient_mock) == [{"tags": ["Fantasy", "für Anna", "für alle"]}]
+
+
+async def test_the_shared_tag_can_be_set_and_nothing_is_written_when_nothing_changes(hass, household, cast, login, aioclient_mock):
+    _tag_mocks(aioclient_mock, ["für alle"])
+    client = await login(cast["anna"])
+    assert (await client.post("/api/books/tags", json={"item_id": "b1", "tag": "für alle", "tagged": True})).status == 200
+    assert _patches(aioclient_mock) == []
+
+
+@pytest.mark.parametrize("body", [
+    {"item_id": "b1", "tag": "Fantasy", "tagged": True},                 # a free text tag
+    {"item_id": "b1", "tag": "für Unbekannt", "tagged": True},           # nobody of that name
+    {"item_id": "b1", "tag": "für Ben", "tagged": "yes"},
+    {"item_id": "../x", "tag": "für Ben", "tagged": True}, {"tag": "für Ben", "tagged": True},
+])
+async def test_only_the_known_tags_and_valid_items_are_accepted(hass, household, cast, login, aioclient_mock, body):
+    _tag_mocks(aioclient_mock, [])
+    resp = await (await login(cast["anna"])).post("/api/books/tags", json=body)
+    assert resp.status == 400 and not aioclient_mock.mock_calls
+
+
+async def test_a_restricted_person_cannot_tag_not_even_for_themselves(hass, household, cast, login, aioclient_mock):
+    await _lock_ben(hass, household, cast)
+    _tag_mocks(aioclient_mock, [])
+    resp = await (await login(cast["ben"])).post("/api/books/tags", json={"item_id": "b1", "tag": "für Ben", "tagged": True})
+    assert resp.status == 403 and (await resp.json())["code"] == "restricted" and not aioclient_mock.mock_calls
+
+
+async def test_a_missing_update_permission_is_explained(hass, household, cast, login, aioclient_mock):
+    _tag_mocks(aioclient_mock, [], patch_status=403)
+    resp = await (await login(cast["anna"])).post("/api/books/tags", json={"item_id": "b1", "tag": "für Ben", "tagged": True})
+    assert resp.status == 502 and (await resp.json())["code"] == "abs_update_denied"

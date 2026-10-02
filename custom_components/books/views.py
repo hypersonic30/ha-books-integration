@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import re
 
 import aiohttp
 from aiohttp import web
@@ -19,15 +20,15 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import ChaptarrClient, TolinoBridgeClient, UpstreamError, get_config
+from .api import AbsClient, ChaptarrClient, TolinoBridgeClient, UpstreamError, get_config
 from .abs_policy import abs_allowed
 from .auth_watch import key_accepted, key_rejected
 from .chaptarr_policy import chaptarr_allowed
 from .komga_policy import komga_allowed
 from .mylar_policy import mylar_request
 from .tolino_registry import async_ensure_registry
-from .restriction import gate, is_restricted
-from .tags import person_tag
+from .restriction import RESTRICTED, gate, is_restricted
+from .tags import SHARED_TAG, async_set_tag, person_tag
 from .users import NO_PERSON, access_denied, account_for_user, config_for, get_users, tolino_allowed, user_of
 from .tolino_send import SendError, async_send_to_tolino
 from .const import (
@@ -571,7 +572,49 @@ class PeopleView(HomeAssistantView):
         restricted = is_restricted(self._hass, me)
         people = [{"name": p["_name"], "tag": tag, "me": uid == me}
                   for uid, p in get_users(self._hass).items() if (tag := person_tag(p)) and (uid == me or not restricted)]
-        return web.json_response({"people": people, "restricted": restricted})   # restricted: only themselves, the card closes search/downloads
+        # restricted: only themselves, the card closes search/downloads and cannot tag; `shared_tag` is the "for everybody" tag
+        return web.json_response({"people": people, "restricted": restricted, "can_tag": not restricted, "shared_tag": SHARED_TAG})
+
+
+class TagView(HomeAssistantView):
+    """POST /api/books/tags {item_id, tag, tagged} — release a book for a person ("für NAME") or for everybody ("für alle"), or take that back.
+
+    Only these tags can be changed here (never a free text, never anybody's other tags), and only by people who are not restricted
+    themselves: the tags are what a limited Audiobookshelf user is allowed to see."""
+
+    url = "/api/books/tags"
+    name = "api:books:tags"
+    requires_auth = True
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self._hass = hass
+
+    async def post(self, request: web.Request) -> web.Response:
+        me = user_of(request)
+        if access_denied(self._hass, me):
+            return web.json_response(NO_PERSON, status=403)
+        if is_restricted(self._hass, me):
+            return web.json_response(RESTRICTED, status=403)
+        try:
+            data = await request.json()
+        except ValueError:
+            return web.json_response({"error": "Invalid JSON"}, status=400)
+        item_id, tag, on = str(data.get("item_id") or ""), data.get("tag"), data.get("tagged")
+        allowed = {t for p in get_users(self._hass).values() if (t := person_tag(p))} | {SHARED_TAG}
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", item_id) or tag not in allowed or not isinstance(on, bool):
+            return web.json_response({"error": "item_id, a known tag and tagged (true/false) are required", "code": "bad_request"}, status=400)
+        try:
+            tags = await async_set_tag(AbsClient(self._hass, get_config(self._hass)), item_id, tag, on)
+        except UpstreamError as exc:
+            if exc.status == 404:
+                return web.json_response({"error": "Book not found", "code": "not_found"}, status=404)
+            if exc.status in (401, 403):
+                return web.json_response({"error": "Der Audiobookshelf-Benutzer der Haupteinstellungen darf keine Tags ändern (Recht „Aktualisieren“ fehlt).",
+                                          "code": "abs_update_denied"}, status=502)
+            return web.json_response({"error": f"Audiobookshelf: HTTP {exc.status}"}, status=502)
+        except (aiohttp.ClientError, TimeoutError) as exc:
+            return web.json_response({"error": f"Cannot connect to Audiobookshelf: {exc}"}, status=503)
+        return web.json_response({"tags": [t for t in tags if t in allowed]})
 
 
 class RescueStatusView(HomeAssistantView):
