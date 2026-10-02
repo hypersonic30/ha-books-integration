@@ -137,7 +137,8 @@
             "sync_progress": "Lesefortschritt von tolino übernehmen",
             "sync_progress_write": "Lesefortschritt zu tolino senden",
             "tolino_account": "Tolino-Konto in der Bridge (optional)",
-            "import_tolino": "E-Books aus tolino importieren"
+            "import_tolino": "E-Books aus tolino importieren",
+            "restrict_books": "Bücher anderer sperren (Kinderschutz)"
           },
           "data_description": {
             "ha_user": "Wer sich in Home Assistant mit diesem Konto anmeldet.",
@@ -150,7 +151,8 @@
             "sync_progress": "Übernimmt Leseposition und „Gelesen“ der gesendeten Bücher von tolino in Audiobookshelf (und die Card). Braucht „Nutzt die Tolino-Bridge“.",
             "sync_progress_write": "Schickt deinen Stand aus Audiobookshelf (was du in der Card liest) zu tolino. Braucht die Option darüber.",
             "tolino_account": "Name des Thalia-Kontos dieser Person in der Bridge (auf Unraid: deploy.sh account add NAME). Leer = das Standardkonto der Bridge. Jede Person braucht ihr eigenes Konto.",
-            "import_tolino": "Holt die E-Books aus dem tolino-Konto dieser Person (Käufe und Gratisbücher, keine Hörbücher) nach Audiobookshelf und markiert sie für diese Person. Beim Einschalten kommt einmal der ganze Bestand, später neue Käufe von selbst. Was schon in Audiobookshelf ist, wird übersprungen. Braucht „Nutzt die Tolino-Bridge“ und die Rechte „Hochladen“ und „Aktualisieren“ für den gemeinsamen Audiobookshelf-Benutzer."
+            "import_tolino": "Holt die E-Books aus dem tolino-Konto dieser Person (Käufe und Gratisbücher, keine Hörbücher) nach Audiobookshelf und markiert sie für diese Person. Beim Einschalten kommt einmal der ganze Bestand, später neue Käufe von selbst. Was schon in Audiobookshelf ist, wird übersprungen. Braucht „Nutzt die Tolino-Bridge“ und die Rechte „Hochladen“ und „Aktualisieren“ für den gemeinsamen Audiobookshelf-Benutzer.",
+            "restrict_books": "Diese Person sieht nur freigegebene Bücher: Bücher mit ihrem Tag („für NAME“) oder mit anderen Tags, die ihr Audiobookshelf-Benutzer sehen darf. Braucht den EIGENEN Audiobookshelf-Token dieser Person (Feld oben) von einem Benutzer, dessen Tag-Zugriff in Audiobookshelf beschränkt ist. Suchen, Anfordern und Downloads sind für diese Person gesperrt."
           }
         },
         "reconfigure": {
@@ -166,7 +168,8 @@
             "sync_progress": "Lesefortschritt von tolino übernehmen",
             "sync_progress_write": "Lesefortschritt zu tolino senden",
             "tolino_account": "Tolino-Konto in der Bridge (optional)",
-            "import_tolino": "E-Books aus tolino importieren"
+            "import_tolino": "E-Books aus tolino importieren",
+            "restrict_books": "Bücher anderer sperren (Kinderschutz)"
           },
           "data_description": {
             "komga_api_key": "Komga → Kontoeinstellungen → API-Schlüssel dieser Person. Leer = das gemeinsame Konto aus den Haupteinstellungen.",
@@ -178,7 +181,8 @@
             "sync_progress": "Übernimmt Leseposition und „Gelesen“ der gesendeten Bücher von tolino in Audiobookshelf (und die Card). Braucht „Nutzt die Tolino-Bridge“.",
             "sync_progress_write": "Schickt deinen Stand aus Audiobookshelf (was du in der Card liest) zu tolino. Braucht die Option darüber.",
             "tolino_account": "Name des Thalia-Kontos dieser Person in der Bridge (auf Unraid: deploy.sh account add NAME). Leer = das Standardkonto der Bridge. Jede Person braucht ihr eigenes Konto.",
-            "import_tolino": "Holt die E-Books aus dem tolino-Konto dieser Person (Käufe und Gratisbücher, keine Hörbücher) nach Audiobookshelf und markiert sie für diese Person. Beim Einschalten kommt einmal der ganze Bestand, später neue Käufe von selbst. Was schon in Audiobookshelf ist, wird übersprungen. Braucht „Nutzt die Tolino-Bridge“ und die Rechte „Hochladen“ und „Aktualisieren“ für den gemeinsamen Audiobookshelf-Benutzer."
+            "import_tolino": "Holt die E-Books aus dem tolino-Konto dieser Person (Käufe und Gratisbücher, keine Hörbücher) nach Audiobookshelf und markiert sie für diese Person. Beim Einschalten kommt einmal der ganze Bestand, später neue Käufe von selbst. Was schon in Audiobookshelf ist, wird übersprungen. Braucht „Nutzt die Tolino-Bridge“ und die Rechte „Hochladen“ und „Aktualisieren“ für den gemeinsamen Audiobookshelf-Benutzer.",
+            "restrict_books": "Diese Person sieht nur freigegebene Bücher: Bücher mit ihrem Tag („für NAME“) oder mit anderen Tags, die ihr Audiobookshelf-Benutzer sehen darf. Braucht den EIGENEN Audiobookshelf-Token dieser Person (Feld oben) von einem Benutzer, dessen Tag-Zugriff in Audiobookshelf beschränkt ist. Suchen, Anfordern und Downloads sind für diese Person gesperrt."
           }
         }
       },
@@ -198,7 +202,9 @@
         "tolino_account_taken": "Dieses Konto nutzt schon eine andere Person – jede Person braucht ein eigenes",
         "tolino_account_invalid": "Name: a–z, 0–9, _ und - (bis 32 Zeichen, keine Großbuchstaben)",
         "komga_admin": "Das ist der Schlüssel eines Komga-Administrators. Nimm einen eigenen Benutzer ohne Admin-Rechte (die Cards brauchen nur Lesen).",
-        "abs_admin": "Das ist das Token eines Audiobookshelf-Administrators. Nimm einen eingeschränkten Benutzer (die Cards brauchen nur Lesen und Hören)."
+        "abs_admin": "Das ist das Token eines Audiobookshelf-Administrators. Nimm einen eingeschränkten Benutzer (die Cards brauchen nur Lesen und Hören).",
+        "restrict_needs_abs_token": "Braucht den eigenen Audiobookshelf-Token dieser Person (Feld oben)",
+        "restrict_abs_not_limited": "Dieser Audiobookshelf-Benutzer ist nicht auf Tags beschränkt. In Audiobookshelf beim Benutzer den Zugriff auf alle Tags ausschalten und die erlaubten Tags wählen."
       },
       "abort": {
         "no_users_left": "Alle Home-Assistant-Benutzer sind schon angelegt",

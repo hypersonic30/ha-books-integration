@@ -26,6 +26,7 @@ from .notify_helper import async_push, unknown_targets
 from .tolino_move import async_rename_default
 from .tolino_send import _bridge_error
 from .users import tolino_accounts, tolino_user_id
+from .restriction import abs_limited
 from .const import (
     CONF_TOLINO_ACCOUNT,
     DEFAULT_TOLINO_ACCOUNT,
@@ -39,6 +40,7 @@ from .const import (
     CONF_ABS_URL,
     CONF_AUTO_SEND,
     CONF_IMPORT_TOLINO,
+    CONF_RESTRICT_BOOKS,
     CONF_CHAPTARR_API_KEY,
     CONF_CHAPTARR_URL,
     CONF_DEBUG_LOGGING,
@@ -362,6 +364,7 @@ class UserSubentryFlow(ConfigSubentryFlow):
                                                     custom_value=True, mode="dropdown")) if accounts else str),
             vol.Required(CONF_AUTO_SEND, default=bool(shown.get(CONF_AUTO_SEND, False))): bool,
             vol.Required(CONF_IMPORT_TOLINO, default=bool(shown.get(CONF_IMPORT_TOLINO, False))): bool,
+            vol.Required(CONF_RESTRICT_BOOKS, default=bool(shown.get(CONF_RESTRICT_BOOKS, False))): bool,
             vol.Required(CONF_SYNC_PROGRESS, default=bool(shown.get(CONF_SYNC_PROGRESS, False))): bool,
             vol.Required(CONF_SYNC_PROGRESS_WRITE, default=bool(shown.get(CONF_SYNC_PROGRESS_WRITE, False))): bool,
             vol.Required("notify_test", default=False): bool,
@@ -384,6 +387,7 @@ class UserSubentryFlow(ConfigSubentryFlow):
             CONF_TOLINO_ACCOUNT: (user_input.get(CONF_TOLINO_ACCOUNT) or "").strip(),
             CONF_AUTO_SEND: bool(user_input.get(CONF_AUTO_SEND)),
             CONF_IMPORT_TOLINO: bool(user_input.get(CONF_IMPORT_TOLINO)),
+            CONF_RESTRICT_BOOKS: bool(user_input.get(CONF_RESTRICT_BOOKS)),
             CONF_SYNC_PROGRESS: bool(user_input.get(CONF_SYNC_PROGRESS)),
             CONF_SYNC_PROGRESS_WRITE: bool(user_input.get(CONF_SYNC_PROGRESS_WRITE)),
             "notify_test": bool(user_input.get("notify_test")),
@@ -403,6 +407,12 @@ class UserSubentryFlow(ConfigSubentryFlow):
             if err:
                 errors[CONF_ABS_TOKEN] = err
             data[CONF_ABS_NAME] = who
+        if data[CONF_RESTRICT_BOOKS]:
+            # The lock is Audiobookshelf's own tag limit on THIS person's user - never the shared account.
+            if not data[CONF_ABS_TOKEN]:
+                errors[CONF_RESTRICT_BOOKS] = "restrict_needs_abs_token"
+            elif CONF_ABS_TOKEN not in errors and await abs_limited(self.hass, data[CONF_ABS_TOKEN]) is not True:
+                errors[CONF_RESTRICT_BOOKS] = "restrict_abs_not_limited"
         if data[CONF_USER_TOLINO] and not cfg.get(CONF_TOLINO_URL):
             errors[CONF_USER_TOLINO] = "tolino_bridge_required"
         # Every person with a Tolino has their own Thalia account in the bridge (an empty name = the default account).

@@ -152,6 +152,15 @@ switches of the person), each with that person's Audiobookshelf account.
   "Take reading progress from tolino" / "Send reading progress to tolino" of the person; needs bridge >= 0.8.0): same file on both sides, so
   the position is exact. The shared Audiobookshelf user needs the **"upload" and "update"** permissions (not admin).
 
+- **Child protection ("Lock other people's books", per person, off by default)**: a restricted person only sees the books released for them.
+  The lock is Audiobookshelf's own tag limit: the person needs their **own Audiobookshelf user** (not admin) with *access to all tags* switched
+  off and the allowed tags chosen (for example `für Lena` and `für alle`); Audiobookshelf then hides everything else - list, covers, files,
+  search. Books without an allowed tag stay invisible, so the existing stock is closed for them until you tag a book (in Audiobookshelf,
+  select several books and add the tag). Saving the person checks that the Audiobookshelf user really is limited, and the check is repeated
+  every few minutes: if it stops being true (or Audiobookshelf cannot be asked for an hour) the library closes for that person and the
+  administrator gets a notice - it never falls back to the shared token. **Search, requests, downloads and the import notes of Chaptarr and
+  Mylar are closed for a restricted person** (the search shows every title with its blurb). Komga is **not** limited yet.
+
 #### Thalia accounts from Home Assistant
 
 Settings → Devices & Services → Books → **Manage Thalia accounts** (needs tolino-bridge ≥ 0.7.0). A menu offers what makes sense:
@@ -209,7 +218,7 @@ Change anything later with the integration's **Reconfigure** action; it applies 
 | `POST /api/books/add` | adds a search result as ebook/audiobook, "only this book" |
 | `/api/books/komga/{path}` | Komga `/api/{path}` — reading, progress, rescan only (strict allow-list; the person's own key) |
 | `/api/books/mylar/{command}` | Mylar3 `/api?cmd={command}` — search, add, queue volumes (allow-list per command and parameter; slow searches answer `202` and run in the background) |
-| `GET /api/books/people` | the people with their tag (`name`, `tag`, `me`) - what the card's person chips are built from |
+| `GET /api/books/people` | the people with their tag (`name`, `tag`, `me`) and `restricted` (the asker is locked; then only themselves are listed) - what the card's person chips and tabs are built from |
 | `GET /api/books/tolino` | status of the asking person's tolino account (`enabled` is false for people without a tolino; `reachable`, `logged_in`, `error`, `sent`) |
 | `POST /api/books/tolino` `{abs_item_id, force?}` (409 `already_sent` if it is still in the cloud; `force` replaces the cloud copy) | sends that item's EPUB/PDF to the Tolino Cloud (errors carry a `code`: `bad_type`, `no_ebook`, `too_large`, `captcha`, `login_backoff`, `unreachable`, …) |
 | `POST /api/books/tolino-autosend` | runs the auto-send job of the asking person's account now (409 `autosend_disabled` if it is switched off, 403 `no_tolino` without a tolino) |

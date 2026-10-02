@@ -26,6 +26,7 @@ from .chaptarr_policy import chaptarr_allowed
 from .komga_policy import komga_allowed
 from .mylar_policy import mylar_request
 from .tolino_registry import async_ensure_registry
+from .restriction import gate, is_restricted
 from .tags import person_tag
 from .users import NO_PERSON, access_denied, account_for_user, config_for, get_users, tolino_allowed, user_of
 from .tolino_send import SendError, async_send_to_tolino
@@ -84,6 +85,8 @@ class _ProxyBase(HomeAssistantView):
     async def _handle(self, request: web.Request, path: str, method: str) -> web.StreamResponse:
         if access_denied(self._hass, user_of(request)):
             return web.json_response(NO_PERSON, status=403)
+        if (blocked := await gate(self._hass, user_of(request), self.service)) is not None:
+            return web.json_response(blocked, status=403)
         if _odd_path(path):
             return web.json_response({"error": "Invalid path"}, status=400)
         cfg = config_for(self._hass, user_of(request))     # the asking person's own Komga key / Audiobookshelf token
@@ -395,6 +398,8 @@ class AddBookView(HomeAssistantView):
     async def post(self, request: web.Request) -> web.Response:
         if access_denied(self._hass, user_of(request)):
             return web.json_response(NO_PERSON, status=403)
+        if (blocked := await gate(self._hass, user_of(request), "Chaptarr")) is not None:
+            return web.json_response(blocked, status=403)
         try:
             data = await request.json()
         except ValueError:
@@ -563,9 +568,10 @@ class PeopleView(HomeAssistantView):
         me = user_of(request)
         if access_denied(self._hass, me):
             return web.json_response(NO_PERSON, status=403)
+        restricted = is_restricted(self._hass, me)
         people = [{"name": p["_name"], "tag": tag, "me": uid == me}
-                  for uid, p in get_users(self._hass).items() if (tag := person_tag(p))]
-        return web.json_response({"people": people})
+                  for uid, p in get_users(self._hass).items() if (tag := person_tag(p)) and (uid == me or not restricted)]
+        return web.json_response({"people": people, "restricted": restricted})   # restricted: only themselves, the card closes search/downloads
 
 
 class RescueStatusView(HomeAssistantView):
@@ -580,6 +586,8 @@ class RescueStatusView(HomeAssistantView):
 
     async def get(self, request: web.Request) -> web.Response:
         rescue = self._hass.data.get(DOMAIN, {}).get("rescue")
+        if is_restricted(self._hass, user_of(request)):                    # the events carry the titles of what Chaptarr imports
+            return web.json_response({"enabled": False, "in_progress": [], "events": []})
         return web.json_response({
             "enabled": rescue is not None and rescue.enabled,
             "in_progress": sorted(rescue.in_progress) if rescue else [],

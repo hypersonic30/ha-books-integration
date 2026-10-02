@@ -502,9 +502,131 @@ async def test_a_refused_tag_write_does_not_stop_the_notification(hass, househol
 
 async def test_people_endpoint_lists_everybody_and_marks_the_asker(hass, household, cast, login):
     body = await (await (await login(cast["ben"])).get("/api/books/people")).json()
-    assert body == {"people": [{"name": "Anna", "tag": "für Anna", "me": False}, {"name": "Ben", "tag": "für Ben", "me": True}]}
+    assert body == {"people": [{"name": "Anna", "tag": "für Anna", "me": False}, {"name": "Ben", "tag": "für Ben", "me": True}], "restricted": False}
 
 
 async def test_people_endpoint_needs_a_person(hass, household, login):
     stranger = await hass.auth.async_create_user("Stranger", group_ids=["system-users"])
     assert (await (await login(stranger)).get("/api/books/people")).status == 403
+
+
+# --- child protection: a person limited to the books released for them ------------------------------------------------------------------
+
+import aiohttp                                                                        # noqa: E402
+from homeassistant.components.persistent_notification import _async_get_or_create_notifications  # noqa: E402
+
+from custom_components.books import restriction                                      # noqa: E402
+
+LIMITED_ME = {"type": "user", "permissions": {"accessAllTags": False, "selectedTagsNotAccessible": False}, "itemTagsSelected": ["für Ben", "für alle"]}
+OPEN_ME = {"type": "user", "permissions": {"accessAllTags": True, "selectedTagsNotAccessible": False}, "itemTagsSelected": []}
+
+
+@pytest.mark.parametrize("me,expected", [
+    (LIMITED_ME, True), (OPEN_ME, False),
+    ({**LIMITED_ME, "permissions": {"accessAllTags": False, "selectedTagsNotAccessible": True}}, False),      # a deny list: everything else stays visible
+    ({**LIMITED_ME, "itemTagsSelected": []}, False),                                                          # nothing selected
+    ({**LIMITED_ME, "type": "admin"}, False), ({}, False), (None, False),
+])
+def test_what_counts_as_limited(me, expected):
+    assert restriction.limited(me) is expected
+
+
+def _ben(household, cast):
+    return next(s for s in household.subentries.values() if s.unique_id == cast["ben"].id)
+
+
+async def _lock_ben(hass, household, cast):
+    _set(hass, household, _ben(household, cast), restrict_books=True, abs_token="abs-ben")
+    await hass.async_block_till_done()
+
+
+async def test_a_restricted_person_gets_the_library_when_their_abs_user_is_limited(hass, household, cast, login, aioclient_mock):
+    await _lock_ben(hass, household, cast)
+    aioclient_mock.get(f"{ABS}/api/me", json=LIMITED_ME, headers=JSON)
+    aioclient_mock.get(f"{ABS}/api/libraries", json={"libraries": []}, headers=JSON)
+    resp = await (await login(cast["ben"])).get("/api/books/abs/libraries")
+    assert resp.status == 200
+    assert _last_headers(aioclient_mock)["Authorization"] == "Bearer abs-ben"           # their own user, never the shared one
+
+
+async def test_a_restricted_person_is_locked_out_when_their_abs_user_is_not_limited(hass, household, cast, login, aioclient_mock):
+    await _lock_ben(hass, household, cast)
+    aioclient_mock.get(f"{ABS}/api/me", json=OPEN_ME, headers=JSON)
+    aioclient_mock.get(f"{ABS}/api/libraries", json={"libraries": [{"id": "secret"}]}, headers=JSON)
+    resp = await (await login(cast["ben"])).get("/api/books/abs/libraries")
+    assert resp.status == 403 and (await resp.json())["code"] == "restricted_unverified"
+    assert not [c for c in aioclient_mock.mock_calls if str(c[1]).endswith("/api/libraries")]       # nothing was forwarded
+    assert f"books_restrict_{cast['ben'].id}" in _async_get_or_create_notifications(hass)
+
+
+async def test_a_restricted_person_without_their_own_token_never_falls_back_to_the_shared_one(hass, household, cast, login, aioclient_mock):
+    _set(hass, household, _ben(household, cast), restrict_books=True, abs_token="")
+    await hass.async_block_till_done()
+    aioclient_mock.get(f"{ABS}/api/libraries", json={"libraries": []}, headers=JSON)
+    resp = await (await login(cast["ben"])).get("/api/books/abs/libraries")
+    assert resp.status == 403 and not aioclient_mock.mock_calls
+
+
+async def test_an_unreachable_abs_refuses_a_restricted_person_unless_it_was_verified_a_moment_ago(hass, household, cast, login, aioclient_mock, monkeypatch):
+    await _lock_ben(hass, household, cast)
+    aioclient_mock.get(f"{ABS}/api/me", exc=aiohttp.ClientConnectionError())
+    aioclient_mock.get(f"{ABS}/api/libraries", json={"libraries": []}, headers=JSON)
+    client = await login(cast["ben"])
+    assert (await client.get("/api/books/abs/libraries")).status == 403                       # never verified: closed
+    hass.data[DOMAIN]["restriction"][cast["ben"].id] = {"at": time.time() - 600, "ok": True}  # verified 10 minutes ago: still held
+    assert (await client.get("/api/books/abs/libraries")).status == 200
+    hass.data[DOMAIN]["restriction"][cast["ben"].id] = {"at": time.time() - 7200, "ok": True} # two hours ago: too old
+    assert (await client.get("/api/books/abs/libraries")).status == 403
+
+
+async def test_search_requests_and_downloads_are_closed_for_a_restricted_person(hass, household, cast, login, aioclient_mock):
+    await _lock_ben(hass, household, cast)
+    aioclient_mock.get(f"{CHAPTARR}/api/v1/search", json=[{"title": "Nichts für Kinder"}], headers=JSON)
+    aioclient_mock.get(f"{CHAPTARR}/api/v1/queue", json={"records": []}, headers=JSON)
+    aioclient_mock.post(f"{CHAPTARR}/api/v1/book", json={"id": 1})
+    aioclient_mock.get(f"{MYLAR}/api", json={"success": True, "data": []}, headers=JSON)
+    client = await login(cast["ben"])
+    for path in ("/api/books/chaptarr/search?term=x", "/api/books/chaptarr/queue", "/api/books/mylar/findComic?name=x"):
+        resp = await client.get(path)
+        assert resp.status == 403 and (await resp.json())["code"] == "restricted", path
+    add = await client.post("/api/books/add", json={"book": SEARCH_BOOK, "media_types": ["ebook"]})
+    assert add.status == 403
+    assert not aioclient_mock.mock_calls                                                      # not one request left Home Assistant
+    assert (await (await client.get("/api/books/rescue")).json())["events"] == []
+
+
+async def test_other_people_and_komga_are_not_affected_by_somebody_elses_lock(hass, household, cast, login, aioclient_mock):
+    await _lock_ben(hass, household, cast)
+    aioclient_mock.get(f"{CHAPTARR}/api/v1/queue", json={"records": []}, headers=JSON)
+    aioclient_mock.get(f"{KOMGA}/api/v1/series", json={"content": []}, headers=JSON)
+    assert (await (await login(cast["anna"])).get("/api/books/chaptarr/queue")).status == 200                # Anna is not restricted
+    assert (await (await login(cast["ben"])).get("/api/books/komga/v1/series")).status == 200                # Komga is not touched yet
+
+
+async def test_the_people_endpoint_tells_a_restricted_person_only_about_themselves(hass, household, cast, login):
+    await _lock_ben(hass, household, cast)
+    body = await (await (await login(cast["ben"])).get("/api/books/people")).json()
+    assert body == {"people": [{"name": "Ben", "tag": "für Ben", "me": True}], "restricted": True}
+
+
+async def test_the_person_form_checks_the_lock(hass, household, cast, aioclient_mock):
+    aioclient_mock.get(f"{KOMGA}/api/v2/users/me", json={"email": "x", "roles": []}, headers=JSON)
+    async_mock_service(hass, "notify", "ben_phone")
+    _bridge_knows(aioclient_mock, "default")
+    base = {"komga_api_key": "", "abs_token": "", "notify_service": "", "tolino": False, "auto_send": False, "import_tolino": False,
+            "sync_progress": False, "sync_progress_write": False, "notify_test": False, "restrict_books": True}
+    sub = _ben(household, cast)
+
+    async def save(**extra):
+        flow = await hass.config_entries.subentries.async_init((household.entry_id, "user"), context={"source": config_entries.SOURCE_RECONFIGURE, "subentry_id": sub.subentry_id})
+        return await hass.config_entries.subentries.async_configure(flow["flow_id"], {**base, **extra})
+
+    assert (await save())["errors"] == {"restrict_books": "restrict_needs_abs_token"}                         # no own token
+    aioclient_mock.get(f"{ABS}/api/me", json={**OPEN_ME, "username": "lena"}, headers=JSON)
+    assert (await save(abs_token="abs-lena"))["errors"] == {"restrict_books": "restrict_abs_not_limited"}     # a user who sees everything
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{KOMGA}/api/v2/users/me", json={"email": "x", "roles": []}, headers=JSON)
+    _bridge_knows(aioclient_mock, "default")
+    aioclient_mock.get(f"{ABS}/api/me", json={**LIMITED_ME, "username": "lena"}, headers=JSON)
+    result = await save(abs_token="abs-lena")
+    assert result["type"] == "abort" and household.subentries[sub.subentry_id].data["restrict_books"] is True

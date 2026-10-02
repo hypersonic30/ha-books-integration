@@ -137,7 +137,8 @@
             "sync_progress": "Take reading progress from tolino",
             "sync_progress_write": "Send reading progress to tolino",
             "tolino_account": "Tolino account in the bridge (optional)",
-            "import_tolino": "Import ebooks from tolino"
+            "import_tolino": "Import ebooks from tolino",
+            "restrict_books": "Lock other people's books (child protection)"
           },
           "data_description": {
             "ha_user": "Whoever signs in to Home Assistant with this account.",
@@ -150,7 +151,8 @@
             "sync_progress": "Imports reading position and 'finished' of the books sent to tolino into Audiobookshelf (and the card). Needs \"Uses the Tolino bridge\".",
             "sync_progress_write": "Sends your state from Audiobookshelf (what you read in the card) to tolino. Needs the option above.",
             "tolino_account": "Name of this person's Thalia account in the bridge (on Unraid: deploy.sh account add NAME). Empty = the bridge's default account. Every person needs their own account.",
-            "import_tolino": "Takes the ebooks in this person's tolino account (purchases and free ones, no audiobooks) into Audiobookshelf and tags them for this person. Switching it on imports the whole stock once; later purchases follow by themselves. What is already in Audiobookshelf is skipped. Needs \"Uses the Tolino bridge\" and the \"update\" and \"upload\" permissions for the shared Audiobookshelf user."
+            "import_tolino": "Takes the ebooks in this person's tolino account (purchases and free ones, no audiobooks) into Audiobookshelf and tags them for this person. Switching it on imports the whole stock once; later purchases follow by themselves. What is already in Audiobookshelf is skipped. Needs \"Uses the Tolino bridge\" and the \"update\" and \"upload\" permissions for the shared Audiobookshelf user.",
+            "restrict_books": "This person only sees the books released for them: books with their tag (\"für NAME\") or other tags their Audiobookshelf user may see. Needs this person's OWN Audiobookshelf token (field above) of a user whose tag access is limited in Audiobookshelf. Search, requests and downloads are closed for this person."
           }
         },
         "reconfigure": {
@@ -166,7 +168,8 @@
             "sync_progress": "Take reading progress from tolino",
             "sync_progress_write": "Send reading progress to tolino",
             "tolino_account": "Tolino account in the bridge (optional)",
-            "import_tolino": "Import ebooks from tolino"
+            "import_tolino": "Import ebooks from tolino",
+            "restrict_books": "Lock other people's books (child protection)"
           },
           "data_description": {
             "komga_api_key": "Komga -> Account Settings -> API Keys of this person. Empty = the shared account from the main settings.",
@@ -178,7 +181,8 @@
             "sync_progress": "Imports reading position and 'finished' of the books sent to tolino into Audiobookshelf (and the card). Needs \"Uses the Tolino bridge\".",
             "sync_progress_write": "Sends your state from Audiobookshelf (what you read in the card) to tolino. Needs the option above.",
             "tolino_account": "Name of this person's Thalia account in the bridge (on Unraid: deploy.sh account add NAME). Empty = the bridge's default account. Every person needs their own account.",
-            "import_tolino": "Takes the ebooks in this person's tolino account (purchases and free ones, no audiobooks) into Audiobookshelf and tags them for this person. Switching it on imports the whole stock once; later purchases follow by themselves. What is already in Audiobookshelf is skipped. Needs \"Uses the Tolino bridge\" and the \"update\" and \"upload\" permissions for the shared Audiobookshelf user."
+            "import_tolino": "Takes the ebooks in this person's tolino account (purchases and free ones, no audiobooks) into Audiobookshelf and tags them for this person. Switching it on imports the whole stock once; later purchases follow by themselves. What is already in Audiobookshelf is skipped. Needs \"Uses the Tolino bridge\" and the \"update\" and \"upload\" permissions for the shared Audiobookshelf user.",
+            "restrict_books": "This person only sees the books released for them: books with their tag (\"für NAME\") or other tags their Audiobookshelf user may see. Needs this person's OWN Audiobookshelf token (field above) of a user whose tag access is limited in Audiobookshelf. Search, requests and downloads are closed for this person."
           }
         }
       },
@@ -198,7 +202,9 @@
         "tolino_account_taken": "Another person already uses this account - everybody needs their own",
         "tolino_account_invalid": "Name: a-z, 0-9, _ and - (up to 32 characters, no capitals)",
         "komga_admin": "This is the key of a Komga administrator. Use a dedicated user without admin rights (the cards only need to read).",
-        "abs_admin": "This is the token of an Audiobookshelf administrator. Use a restricted user (the cards only need to read and listen)."
+        "abs_admin": "This is the token of an Audiobookshelf administrator. Use a restricted user (the cards only need to read and listen).",
+        "restrict_needs_abs_token": "Needs this person's own Audiobookshelf token (field above)",
+        "restrict_abs_not_limited": "This Audiobookshelf user is not limited to tags. In Audiobookshelf switch off access to all tags for this user and choose the allowed tags."
       },
       "abort": {
         "no_users_left": "Every Home Assistant user is already added",

@@ -46,7 +46,7 @@ async def test_home_assistant_loads_the_new_labels(hass, language):
 
 # --- the "person" form (config subentry) ----------------------------------------------------------------
 
-PERSON_FIELDS = ["ha_user", "komga_api_key", "abs_token", "notify_service", "tolino", "tolino_account", "auto_send", "import_tolino", "sync_progress", "sync_progress_write", "notify_test"]
+PERSON_FIELDS = ["ha_user", "komga_api_key", "abs_token", "notify_service", "tolino", "tolino_account", "auto_send", "import_tolino", "restrict_books", "sync_progress", "sync_progress_write", "notify_test"]
 
 
 @pytest.mark.parametrize("file", FILES)

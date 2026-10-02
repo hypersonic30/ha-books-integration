@@ -30,6 +30,7 @@ CONF_NOTIFY_SERVICE = "notify_service"
 CONF_DEBUG_LOGGING = "debug_logging"
 CONF_AUTO_SEND = "auto_send"
 CONF_IMPORT_TOLINO = "import_tolino"
+CONF_RESTRICT_BOOKS = "restrict_books"
 CONF_SYNC_PROGRESS = "sync_progress"
 CONF_SYNC_PROGRESS_WRITE = "sync_progress_write"
 
