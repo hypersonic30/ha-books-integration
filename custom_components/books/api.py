@@ -84,6 +84,10 @@ class _Client:
 
     async def fetch_bytes(self, path: str, *, max_bytes: int, timeout: float) -> bytes:
         """GET a binary body, refusing anything larger than `max_bytes`."""
+        return (await self.fetch_file(path, max_bytes=max_bytes, timeout=timeout))[0]
+
+    async def fetch_file(self, path: str, *, max_bytes: int, timeout: float) -> tuple[bytes, Any]:
+        """Like fetch_bytes, but also returns the response headers."""
         async with self.session.get(
             f"{self.base_url}{path}", headers=self.headers, timeout=aiohttp.ClientTimeout(total=timeout),
         ) as resp:
@@ -97,7 +101,7 @@ class _Client:
                 body += chunk
                 if len(body) > max_bytes:
                     raise UpstreamError(413, "file too large")
-            return bytes(body)
+            return bytes(body), resp.headers
 
     async def get(self, path: str, **kwargs: Any) -> Any:
         return await self.request("GET", path, **kwargs)

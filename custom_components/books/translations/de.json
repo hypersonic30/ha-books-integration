@@ -138,7 +138,9 @@
             "sync_progress_write": "Lesefortschritt zu tolino senden",
             "tolino_account": "Tolino-Konto in der Bridge (optional)",
             "import_tolino": "E-Books aus tolino importieren",
-            "restrict_books": "Bücher anderer sperren (Kinderschutz)"
+            "restrict_books": "Bücher anderer sperren (Kinderschutz)",
+            "import_tolino_audiobooks": "Hörbücher aus tolino importieren",
+            "import_tolino_radioplays": "Hörspiele aus tolino importieren"
           },
           "data_description": {
             "ha_user": "Wer sich in Home Assistant mit diesem Konto anmeldet.",
@@ -152,7 +154,9 @@
             "sync_progress_write": "Schickt deinen Stand aus Audiobookshelf (was du in der Card liest) zu tolino. Braucht die Option darüber.",
             "tolino_account": "Name des Thalia-Kontos dieser Person in der Bridge (auf Unraid: deploy.sh account add NAME). Leer = das Standardkonto der Bridge. Jede Person braucht ihr eigenes Konto.",
             "import_tolino": "Holt die E-Books aus dem tolino-Konto dieser Person (Käufe und Gratisbücher, keine Hörbücher) nach Audiobookshelf und markiert sie für diese Person. Beim Einschalten kommt einmal der ganze Bestand, später neue Käufe von selbst. Was schon in Audiobookshelf ist, wird übersprungen. Braucht „Nutzt die Tolino-Bridge“ und die Rechte „Hochladen“ und „Aktualisieren“ für den gemeinsamen Audiobookshelf-Benutzer.",
-            "restrict_books": "Diese Person sieht nur freigegebene Bücher: Bücher mit ihrem Tag („für NAME“) oder mit anderen Tags, die ihr Audiobookshelf-Benutzer sehen darf. Braucht den EIGENEN Audiobookshelf-Token dieser Person (Feld oben) von einem Benutzer, dessen Tag-Zugriff in Audiobookshelf beschränkt ist. Suchen, Anfordern und Downloads sind für diese Person gesperrt."
+            "restrict_books": "Diese Person sieht nur freigegebene Bücher: Bücher mit ihrem Tag („für NAME“) oder mit anderen Tags, die ihr Audiobookshelf-Benutzer sehen darf. Braucht den EIGENEN Audiobookshelf-Token dieser Person (Feld oben) von einem Benutzer, dessen Tag-Zugriff in Audiobookshelf beschränkt ist. Suchen, Anfordern und Downloads sind für diese Person gesperrt.",
+            "import_tolino_audiobooks": "Holt die Hörbücher (MP3) aus dem tolino-Konto dieser Person in die Audiobookshelf-Bibliothek „Hörbücher“ und markiert sie für diese Person. Ein Titel mit drei oder mehr Sprechern oder mit dem Wort Hörspiel in der Beschreibung gilt als Hörspiel und gehört zum nächsten Schalter. Ein Hörbuch alle 10 Minuten; beim Laden braucht der Home-Assistant-Konfigurationsordner so viel freien Platz wie das Hörbuch groß ist. Braucht „Nutzt die Tolino-Bridge“ und die Rechte „Hochladen“ und „Aktualisieren“ für den gemeinsamen Audiobookshelf-Benutzer.",
+            "import_tolino_radioplays": "Holt die Hörspiele aus dem tolino-Konto dieser Person in die Audiobookshelf-Bibliothek „Hörspiele“ und markiert sie für diese Person. Der Shop sagt nicht, was was ist: drei oder mehr Sprecher oder das Wort Hörspiel in der Beschreibung machen einen Titel zum Hörspiel. Sonst gelten dieselben Regeln wie bei Hörbüchern. Braucht „Nutzt die Tolino-Bridge“."
           }
         },
         "reconfigure": {
@@ -169,7 +173,9 @@
             "sync_progress_write": "Lesefortschritt zu tolino senden",
             "tolino_account": "Tolino-Konto in der Bridge (optional)",
             "import_tolino": "E-Books aus tolino importieren",
-            "restrict_books": "Bücher anderer sperren (Kinderschutz)"
+            "restrict_books": "Bücher anderer sperren (Kinderschutz)",
+            "import_tolino_audiobooks": "Hörbücher aus tolino importieren",
+            "import_tolino_radioplays": "Hörspiele aus tolino importieren"
           },
           "data_description": {
             "komga_api_key": "Komga → Kontoeinstellungen → API-Schlüssel dieser Person. Leer = das gemeinsame Konto aus den Haupteinstellungen.",
@@ -182,7 +188,9 @@
             "sync_progress_write": "Schickt deinen Stand aus Audiobookshelf (was du in der Card liest) zu tolino. Braucht die Option darüber.",
             "tolino_account": "Name des Thalia-Kontos dieser Person in der Bridge (auf Unraid: deploy.sh account add NAME). Leer = das Standardkonto der Bridge. Jede Person braucht ihr eigenes Konto.",
             "import_tolino": "Holt die E-Books aus dem tolino-Konto dieser Person (Käufe und Gratisbücher, keine Hörbücher) nach Audiobookshelf und markiert sie für diese Person. Beim Einschalten kommt einmal der ganze Bestand, später neue Käufe von selbst. Was schon in Audiobookshelf ist, wird übersprungen. Braucht „Nutzt die Tolino-Bridge“ und die Rechte „Hochladen“ und „Aktualisieren“ für den gemeinsamen Audiobookshelf-Benutzer.",
-            "restrict_books": "Diese Person sieht nur freigegebene Bücher: Bücher mit ihrem Tag („für NAME“) oder mit anderen Tags, die ihr Audiobookshelf-Benutzer sehen darf. Braucht den EIGENEN Audiobookshelf-Token dieser Person (Feld oben) von einem Benutzer, dessen Tag-Zugriff in Audiobookshelf beschränkt ist. Suchen, Anfordern und Downloads sind für diese Person gesperrt."
+            "restrict_books": "Diese Person sieht nur freigegebene Bücher: Bücher mit ihrem Tag („für NAME“) oder mit anderen Tags, die ihr Audiobookshelf-Benutzer sehen darf. Braucht den EIGENEN Audiobookshelf-Token dieser Person (Feld oben) von einem Benutzer, dessen Tag-Zugriff in Audiobookshelf beschränkt ist. Suchen, Anfordern und Downloads sind für diese Person gesperrt.",
+            "import_tolino_audiobooks": "Holt die Hörbücher (MP3) aus dem tolino-Konto dieser Person in die Audiobookshelf-Bibliothek „Hörbücher“ und markiert sie für diese Person. Ein Titel mit drei oder mehr Sprechern oder mit dem Wort Hörspiel in der Beschreibung gilt als Hörspiel und gehört zum nächsten Schalter. Ein Hörbuch alle 10 Minuten; beim Laden braucht der Home-Assistant-Konfigurationsordner so viel freien Platz wie das Hörbuch groß ist. Braucht „Nutzt die Tolino-Bridge“ und die Rechte „Hochladen“ und „Aktualisieren“ für den gemeinsamen Audiobookshelf-Benutzer.",
+            "import_tolino_radioplays": "Holt die Hörspiele aus dem tolino-Konto dieser Person in die Audiobookshelf-Bibliothek „Hörspiele“ und markiert sie für diese Person. Der Shop sagt nicht, was was ist: drei oder mehr Sprecher oder das Wort Hörspiel in der Beschreibung machen einen Titel zum Hörspiel. Sonst gelten dieselben Regeln wie bei Hörbüchern. Braucht „Nutzt die Tolino-Bridge“."
           }
         }
       },

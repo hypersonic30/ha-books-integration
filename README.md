@@ -152,6 +152,12 @@ switches of the person), each with that person's Audiobookshelf account.
   "Take reading progress from tolino" / "Send reading progress to tolino" of the person; needs bridge >= 0.8.0): same file on both sides, so
   the position is exact. The shared Audiobookshelf user needs the **"upload" and "update"** permissions (not admin).
 
+- **Audiobooks from tolino (two more switches per person, off by default, needs bridge >= 0.9.0)**: "Import audiobooks from tolino" and "Import radio
+  plays from tolino" load the MP3 audiobooks of the person's tolino account track by track (the way the web reader does) into a temporary folder
+  of the Home Assistant config directory, upload them in one go into the Audiobookshelf library named *Hörbücher* / *Hörspiele* and tag them
+  `für NAME`. The shop does not say which is which: a title with three or more readers, or the word Hörspiel in its text, counts as a radio play,
+  everything else as an audiobook - a title of a kind that is switched off stays in the cloud and comes when it is switched on. One audiobook per
+  10-minute run; what is already in Audiobookshelf (same title) is skipped. Reading progress of audiobooks is not synced yet.
 - **Child protection ("Lock other people's books", per person, off by default)**: a restricted person only sees the books released for them.
   The lock is Audiobookshelf's own tag limit: the person needs their **own Audiobookshelf user** (not admin) with *access to all tags* switched
   off and the allowed tags chosen (for example `für Lena` and `für alle`); Audiobookshelf then hides everything else - list, covers, files,
