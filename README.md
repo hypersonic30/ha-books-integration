@@ -157,7 +157,10 @@ switches of the person), each with that person's Audiobookshelf account.
   of the Home Assistant config directory, upload them in one go into the Audiobookshelf library named *Hörbücher* / *Hörspiele* and tag them
   `für NAME`. The shop does not say which is which: a title with three or more readers, or the word Hörspiel in its text, counts as a radio play,
   everything else as an audiobook - a title of a kind that is switched off stays in the cloud and comes when it is switched on. One audiobook per
-  10-minute run; what is already in Audiobookshelf (same title) is skipped. Reading progress of audiobooks is not synced yet.
+  10-minute run; what is already in Audiobookshelf (same title and same kind) is skipped. Imported audiobooks and radio plays take part in the
+  reading-progress sync like ebooks (switches "Take reading progress from tolino" / "Send reading progress to tolino", needs bridge >= 0.10.0): the
+  tolino position (track and second) and Audiobookshelf's play time are converted both ways, places closer than 3 seconds count as the same place.
+  Not synced yet: the "finished" mark of audiobooks.
 - **Child protection ("Lock other people's books", per person, off by default)**: a restricted person only sees the books released for them.
   The lock is Audiobookshelf's own tag limit: the person needs their **own Audiobookshelf user** (not admin) with *access to all tags* switched
   off and the allowed tags chosen (for example `für Lena` and `für alle`); Audiobookshelf then hides everything else - list, covers, files,
