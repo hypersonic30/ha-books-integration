@@ -349,7 +349,8 @@ async def test_an_audiobook_goes_track_by_track_into_the_audiobook_library_tagge
     owner = next(iter(get_users(hass).values()))
     assert [c[2] for c in calls(aioclient_mock, "PATCH", "/api/items/new1/media")] == [{"tags": [person_tag(owner)]}]
     assert job.state["done"]["DT0244.1"] == {**job.state["done"]["DT0244.1"], "how": "imported", "item_id": "new1", "media": "audiobook"}
-    assert not hass.data[DOMAIN]["registries"]["default"].items                      # no progress sync for audio yet
+    entry = hass.data[DOMAIN]["registries"]["default"].get("new1")                   # the progress sync works from this
+    assert entry["deliverableId"] == "DT0244.1" and entry["filename"] == "imported-audio"
     assert not os.path.exists(hass.config.path("books_import_tmp", "DT0244.1"))      # the temporary folder is gone
     assert not [c for c in aioclient_mock.mock_calls if str(c[1]).split("?")[0].endswith("/purchases") and "media" not in str(c[1])]   # no ebook switch: no ebook list
 
@@ -442,12 +443,12 @@ async def test_the_audiobooks_own_title_counts_for_the_duplicate_check(hass, mon
     assert summary["already"] == ["Deutscher Shop-Titel"] and not uploads_seen and not calls(aioclient_mock, "GET", "/track/1")
 
 
-async def test_imported_audiobooks_are_not_entered_in_the_progress_registry_on_start(hass, monkeypatch, aioclient_mock):
+async def test_imported_audiobooks_are_entered_in_the_progress_registry_on_start(hass, monkeypatch, aioclient_mock):
     job = await _setup(hass, monkeypatch, on=False, import_tolino_audiobooks=True)
     job.state["done"]["DT0244.5"] = {"title": "Hörbuch", "item_id": "au5", "how": "imported", "at": "x", "media": "audiobook"}
     await job._store.async_save(job.state)
     await job.async_start()
-    assert not hass.data[DOMAIN]["registries"]["default"].items
+    assert hass.data[DOMAIN]["registries"]["default"].get("au5")["deliverableId"] == "DT0244.5"
 
 
 

@@ -15,7 +15,7 @@ Audiobooks (MP3) have their own two switches, "Hörbücher" and "Hörspiele": th
 Hörspiel when three or more readers are listed or the text says "Hörspiel" (`classify_audio`), otherwise as a Hörbuch. They are loaded track
 by track the way the web reader does (bridge: /audiobooks/{id}, /purchases/{id}/track/{n}) into a temporary folder, uploaded in one go
 (Audiobookshelf's upload takes many files; the shop's file names keep the order) into the library named like "Hörbücher" / "Hörspiele"
-and tagged like ebooks. One audiobook per run (they are big). Not registered for the progress sync yet."""
+and tagged like ebooks. One audiobook per run (they are big). Registered for the reading-progress sync like the ebooks (audio_positions.py)."""
 from __future__ import annotations
 
 import asyncio
@@ -147,11 +147,11 @@ class TolinoImporter:
     def imported_at(self, item_id: str) -> str | None:
         return next((v.get("at") or "" for v in self.state["done"].values() if v.get("item_id") == item_id), None)
 
-    async def _register(self, item_id: str, publication_id: str) -> None:
+    async def _register(self, item_id: str, publication_id: str, filename: str = "imported.epub") -> None:
         """Enter the book in the account's registry of books that are on both sides (what the progress sync works from)."""
         registry = await async_ensure_registry(self._hass, self.account)
         if not registry.get(item_id):
-            await registry.async_set(item_id, publication_id, "imported.epub")
+            await registry.async_set(item_id, publication_id, filename)
 
     async def async_start(self) -> None:
         """Load the state; a new owner of the account starts from scratch (their cloud is a different one)."""
@@ -186,8 +186,8 @@ class TolinoImporter:
             self.state["kinds"] = kinds                                  # a kind was switched off: remember it, nothing to start
             await self._store.async_save(self.state)
         for pid, entry in self.state["done"].items():                    # books imported before they were registered
-            if entry.get("how") == "imported" and entry.get("item_id") and entry.get("media", "ebook") == "ebook":
-                await self._register(entry["item_id"], pid)
+            if entry.get("how") == "imported" and entry.get("item_id"):
+                await self._register(entry["item_id"], pid, "imported.epub" if entry.get("media", "ebook") == "ebook" else "imported-audio")
 
     async def async_tick(self, _now=None) -> dict | None:
         if not self.enabled or self._running.locked():
@@ -344,6 +344,8 @@ class TolinoImporter:
                 _LOGGER.warning("books: tolino import paused at audiobook '%s': %s", title, exc)
                 break
             self.state["done"][pid] = {"title": title, "at": dt_util.utcnow().isoformat(), "how": "imported", "item_id": item_id, "media": kind}
+            if item_id:
+                await self._register(item_id, pid, "imported-audio")
             known.add(_norm(title))
             known.add(_norm(info.get("title") or ""))
             summary["imported"].append(title)
@@ -532,8 +534,7 @@ class TolinoImporter:
                 for item in (data or {}).get("results", []):
                     if _norm(((item.get("media") or {}).get("metadata") or {}).get("title", "")) == _norm(entry["title"]):
                         entry["item_id"] = item["id"]
-                        if kind == "ebook":
-                            await self._register(item["id"], pid)
+                        await self._register(item["id"], pid, "imported.epub" if kind == "ebook" else "imported-audio")
                         await self._tag(abs_client, item["id"], tag)
                         break
 

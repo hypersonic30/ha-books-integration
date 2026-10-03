@@ -11,7 +11,8 @@ Newest wins, and loops are avoided by remembering per book the last state seen o
 `abs_seen` (Audiobookshelf's lastUpdate, which also covers what we wrote there ourselves). A side counts as "changed"
 only when it moved past what we last saw.
 
-Positions: see positions.py (Tolino counts document nodes, not CFI elements; paragraph precision).
+Positions: see positions.py (Tolino counts document nodes, not CFI elements; paragraph precision). Audiobooks: audio_positions.py (track and
+second); their "finished" is not synced yet (how the app marks it is not known).
 """
 from __future__ import annotations
 
@@ -40,11 +41,13 @@ from .const import (
     TOLINO_MAX_BYTES,
     TOLINO_UPLOAD_TIMEOUT,
 )
+from .audio_positions import medialoc_to_time, time_to_medialoc, tolino_progress
 from .positions import Epub, cfi_to_point, point_to_cfi
 
 _LOGGER = logging.getLogger(__name__)
 
 MIN_PROGRESS_DELTA = 0.005          # below this a difference is noise, not something to write to the other side
+MIN_AUDIO_DELTA_S = 3.0             # the same for an audiobook: places closer than this (seconds) are the same place
 _SYNC_ERRORS = (UpstreamError, aiohttp.ClientError, TimeoutError, zipfile.BadZipFile, ET.ParseError, KeyError)
 
 
@@ -53,6 +56,7 @@ class ProgressSync:
         self._hass = hass
         self.account = account                      # one job per bridge account (= per person with a Tolino)
         self.last_run: dict | None = None
+        self._durations_cache: dict[str, list[float] | None] = {}
 
     @property
     def enabled(self) -> bool:
@@ -77,6 +81,7 @@ class ProgressSync:
         registry = registry_for(self._hass, self.account)
         write = self.write_enabled
         summary = {"checked": 0, "imported": [], "exported": [], "skipped": []}
+        self._durations_cache = {}
         if not registry.items:
             return summary
         bridge = TolinoBridgeClient(self._hass, cfg, self.account)
@@ -141,6 +146,14 @@ class ProgressSync:
     async def _epub(abs_client: AbsClient, item_id: str) -> Epub:
         return Epub(await abs_client.fetch_bytes(f"/items/{item_id}/ebook", max_bytes=TOLINO_MAX_BYTES, timeout=TOLINO_UPLOAD_TIMEOUT))
 
+    async def _durations(self, abs_client: AbsClient, item_id: str) -> list[float] | None:
+        """The lengths (s) of an audiobook's files in play order, or None when the item is no audiobook (cached for one run)."""
+        if item_id not in self._durations_cache:
+            item = await abs_client.get(f"/items/{item_id}", params={"expanded": 1})
+            files = sorted([f for f in (((item or {}).get("media") or {}).get("audioFiles") or []) if not f.get("exclude")], key=lambda f: f.get("index") or 0)
+            self._durations_cache[item_id] = [float(f.get("duration") or 0) for f in files] or None
+        return self._durations_cache[item_id]
+
     @staticmethod
     async def _is_epub(abs_client: AbsClient, item_id: str) -> bool:
         item = await abs_client.get(f"/items/{item_id}")
@@ -148,7 +161,21 @@ class ProgressSync:
 
     # -- tolino -> Audiobookshelf ---------------------------------------------------------------------------------
 
+    async def _import_audio(self, abs_client, registry, item_id, state, tolino_t, durations) -> None:
+        body: dict = {}
+        current = medialoc_to_time(state.get("position"), durations)
+        if current is not None:
+            total = sum(durations)
+            body = {"currentTime": current, "duration": total, "progress": min(1.0, current / total), "isFinished": False}
+            await abs_client.request("PATCH", f"/me/progress/{item_id}", json=body)
+            _LOGGER.info("books: progress sync tolino -> Audiobookshelf (audio): %s %s", item_id, body)
+        after = await self._abs_progress(abs_client, item_id)
+        await registry.async_update(item_id, progress_modified=tolino_t, progress_finished=False, abs_seen=int((after or {}).get("lastUpdate") or 0))
+
     async def _import(self, abs_client, registry, item_id, sent, state, tolino_t, tolino_f) -> None:
+        durations = await self._durations(abs_client, item_id)
+        if durations:
+            return await self._import_audio(abs_client, registry, item_id, state, tolino_t, durations)
         body: dict = {"isFinished": tolino_f}
         progress = 1 if tolino_f and state.get("progress") is None else state.get("progress")
         if progress is not None:
@@ -165,8 +192,26 @@ class ProgressSync:
 
     # -- Audiobookshelf -> tolino ---------------------------------------------------------------------------------
 
+    async def _export_audio(self, bridge, registry, item_id, sent, state, current, abs_t, durations) -> bool:
+        """An audiobook: the place in Audiobookshelf becomes a tolino position (the finished flag is left alone, see the module text)."""
+        played = float(current.get("currentTime") or 0)
+        position = time_to_medialoc(played, durations)
+        there = medialoc_to_time((state or {}).get("position"), durations)
+        if current.get("isFinished") or not position or (there is not None and abs(there - played) < MIN_AUDIO_DELTA_S):
+            await registry.async_update(item_id, abs_seen=abs_t)
+            return False
+        info = await bridge.get(f"/audiobooks/{sent['deliverableId']}")
+        body = {"position": position, "progress": tolino_progress(played, [t["duration_ms"] for t in info.get("tracks") or []], info.get("duration_s") or 0)}
+        result = await bridge.request("PUT", f"/progress/{sent['deliverableId']}", json=body, timeout=120)
+        _LOGGER.info("books: progress sync Audiobookshelf -> tolino (audio): %s %s", item_id, body)
+        await registry.async_update(item_id, abs_seen=abs_t, progress_modified=int(result.get("modified") or 0), progress_finished=False)
+        return True
+
     async def _export(self, bridge, abs_client, registry, item_id, sent, state, current, abs_t) -> bool:
         """Returns True if something was written to Tolino (False: nothing material, only noted as seen)."""
+        durations = await self._durations(abs_client, item_id)
+        if durations:
+            return await self._export_audio(bridge, registry, item_id, sent, state, current, abs_t, durations)
         body: dict = {}
         abs_finished = bool(current.get("isFinished"))
         if abs_finished != bool((state or {}).get("finished")):
