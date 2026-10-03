@@ -160,14 +160,24 @@ class TolinoImporter:
         self.state.setdefault("failed", {})
         self.state.setdefault("audio_kind", {})
         owner = tolino_user_id(self._hass, self.account)
+        kinds = sorted(self._kinds(tolino_config(self._hass, self.account))) if self.enabled else []
+        added = bool(set(kinds) - set(self.state.get("kinds") or []))      # a kind that was not on before (ebooks, Hörbücher, Hörspiele)
         if self.enabled and (not self.state.get("active") or self.state.get("owner") != owner):
             fresh = self.state.get("owner") != owner
-            self.state.update(active=True, owner=owner, **({"done": {}, "failed": {}, "audio_kind": {}} if fresh else {"failed": {}}))
+            self.state.update(active=True, owner=owner, kinds=kinds, **({"done": {}, "failed": {}, "audio_kind": {}} if fresh else {"failed": {}}))
             _LOGGER.info("books: tolino import switched on for account %s", self.account)
             await self._store.async_save(self.state)
             self._hass.async_create_task(self.async_tick())             # do not wait for the next interval
+        elif self.enabled and added:
+            self.state.update(kinds=kinds, failed={})
+            _LOGGER.info("books: tolino import for account %s now also takes %s", self.account, ", ".join(kinds))
+            await self._store.async_save(self.state)
+            self._hass.async_create_task(self.async_tick())             # a switch turned on while another one was already on: start now as well
         elif not self.enabled and self.state.get("active"):
-            self.state["active"] = False
+            self.state.update(active=False, kinds=[])
+            await self._store.async_save(self.state)
+        elif self.state.get("kinds") != kinds and self.enabled:
+            self.state["kinds"] = kinds                                  # a kind was switched off: remember it, nothing to start
             await self._store.async_save(self.state)
         for pid, entry in self.state["done"].items():                    # books imported before they were registered
             if entry.get("how") == "imported" and entry.get("item_id") and entry.get("media", "ebook") == "ebook":

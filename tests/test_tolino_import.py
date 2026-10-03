@@ -447,3 +447,27 @@ async def test_imported_audiobooks_are_not_entered_in_the_progress_registry_on_s
     await job._store.async_save(job.state)
     await job.async_start()
     assert not hass.data[DOMAIN]["registries"]["default"].items
+
+
+
+async def test_a_kind_switched_on_while_another_is_already_on_starts_a_run_at_once(hass, monkeypatch, aioclient_mock):
+    job = await _setup(hass, monkeypatch, on=True)                                           # ebooks are on already
+    ticks = []
+
+    async def counting(self, _now=None):
+        ticks.append(1)
+    monkeypatch.setattr(tolino_import.TolinoImporter, "async_tick", counting)
+    entry = next(iter(hass.config_entries.async_entries(DOMAIN)))
+    sub = next(iter(entry.subentries.values()))
+    change = lambda **kw: hass.config_entries.async_update_subentry(entry, sub, data={**entry.subentries[sub.subentry_id].data, **kw})
+    await job.async_start()
+    assert ticks == [] and job.state["kinds"] == ["ebook"]                                   # nothing new: nothing started
+    change(import_tolino_audiobooks=True)
+    await hass.async_block_till_done()
+    assert ticks == [1] and job.state["kinds"] == ["audiobook", "ebook"]                      # Hörbücher added: a run starts now
+    change(import_tolino_audiobooks=False)
+    await hass.async_block_till_done()
+    assert ticks == [1] and job.state["kinds"] == ["ebook"]                                  # one switched off: nothing to start
+    change(import_tolino=False, import_tolino_radioplays=True)
+    await hass.async_block_till_done()
+    assert ticks == [1, 1] and job.state["kinds"] == ["radioplay"]                           # another kind added while one went away
