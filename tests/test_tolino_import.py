@@ -47,7 +47,8 @@ async def _setup(hass, monkeypatch, on=True, known=(), **person_kw):
     monkeypatch.setattr(tolino_import.TolinoImporter, "async_tick", _no_tick)             # the run that starts on switching on: tests call async_run
     if known is not None:
         async def titles(self, abs_client, library_ids):
-            return {tolino_import._norm(t) for t in known}
+            both = {tolino_import._norm(t) for t in known}
+            return {"ebook": set(both), "audio": set(both)}
         monkeypatch.setattr(tolino_import.TolinoImporter, "_known_titles", titles)
     async def healthy(self):
         return {"reachable": True, "logged_in": True, "problem": False}
@@ -471,3 +472,67 @@ async def test_a_kind_switched_on_while_another_is_already_on_starts_a_run_at_on
     change(import_tolino=False, import_tolino_radioplays=True)
     await hass.async_block_till_done()
     assert ticks == [1, 1] and job.state["kinds"] == ["radioplay"]                           # another kind added while one went away
+
+
+
+def _abs_item(item_id, title, ebook=False, audio_files=0):
+    media = {"metadata": {"title": title}}
+    if ebook:
+        media["ebookFormat"] = "epub"
+    if audio_files:
+        media.update(numAudioFiles=audio_files, duration=600.0)
+    return {"id": item_id, "addedAt": 1, "media": media}
+
+
+async def test_an_ebook_and_an_audiobook_of_the_same_title_are_not_the_same_thing(hass, monkeypatch, aioclient_mock):
+    """Real case: the ebook "Verbrechen to go" was in Audiobookshelf, so the audiobook of that name was skipped as already there."""
+    job = await _setup(hass, monkeypatch, on=False, known=None, import_tolino_audiobooks=True)
+    aioclient_mock.get(f"{ABS}/api/libraries/{LIB}/items", json={"results": [_abs_item("e1", "Verbrechen to go", ebook=True),
+                                                                              _abs_item("a1", "Nur Hörbuch", audio_files=3),
+                                                                              _abs_item("b1", "Beides", ebook=True, audio_files=2),
+                                                                              _abs_item("x1", "Unbekannt")]}, headers=JSON)
+    titles = await job._known_titles(AbsClient(hass, {"abs_url": ABS, "abs_token": "t"}), [LIB])
+    n = tolino_import._norm
+    assert n("Verbrechen to go") in titles["ebook"] and n("Verbrechen to go") not in titles["audio"]
+    assert n("Nur Hörbuch") in titles["audio"] and n("Nur Hörbuch") not in titles["ebook"]
+    assert n("Beides") in titles["ebook"] and n("Beides") in titles["audio"]                        # one item can be both
+    assert n("Unbekannt") in titles["ebook"] and n("Unbekannt") in titles["audio"]                  # says neither: counts for both
+
+
+async def test_the_audiobook_is_imported_although_the_ebook_of_that_name_exists(hass, monkeypatch, aioclient_mock, uploads_seen):
+    job = await _setup(hass, monkeypatch, on=False, known=None, import_tolino_audiobooks=True)
+    book, info = audio(1, "Verbrechen to go")
+    aioclient_mock.get(f"{BRIDGE}/purchases?media=audiobook", json={"count": 1, "books": [book]}, headers=JSON)
+    aioclient_mock.get(f"{BRIDGE}/audiobooks/{book['publicationId']}", json=info, headers=JSON)
+    for t in info["tracks"]:
+        aioclient_mock.get(f"{BRIDGE}/purchases/au-1/track/{t['number']}", content=b"ID3" + bytes([t["number"]]) * 20, headers={"X-Filename": f"{t['number']:02d}_x.mp3"})
+    aioclient_mock.get(f"{ABS}/api/libraries", json={"libraries": LIBS}, headers=JSON)
+    aioclient_mock.get(f"{ABS}/api/libraries/{LIB}/items", json={"results": [_abs_item("e1", "Verbrechen to go", ebook=True)]}, headers=JSON)   # the EBOOK is there
+    aioclient_mock.get(f"{ABS}/api/libraries/lib-hb/items", json={"results": []}, headers=JSON)
+    aioclient_mock.get(f"{ABS}/api/libraries/lib-hs/items", json={"results": []}, headers=JSON)
+    aioclient_mock.post(f"{ABS}/api/upload", text="OK")
+    summary = await job.async_run()
+    assert summary["imported"] == ["Verbrechen to go"] and summary["already"] == [] and len(uploads_seen) == 1
+
+
+async def test_what_the_old_rule_skipped_is_looked_at_again(hass, monkeypatch, aioclient_mock, uploads_seen):
+    job = await _setup(hass, monkeypatch, on=False, known=(), import_tolino_audiobooks=True)
+    job.state.update(done={"DT0244.1": {"title": "Verbrechen to go", "how": "already_in_abs", "item_id": None, "media": "audiobook", "at": "x"},
+                           "DT0244.2": {"title": "Echt importiert", "how": "imported", "item_id": "i2", "media": "audiobook", "at": "x"}}, dedupe_v=None)
+    await job._store.async_save(job.state)
+    await job.async_start()
+    assert list(job.state["done"]) == ["DT0244.2"] and job.state["dedupe_v"] == 2                  # the skipped one comes back, real imports stay
+    await job.async_start()                                                                          # and it happens only once
+    assert list(job.state["done"]) == ["DT0244.2"]
+
+
+async def test_the_ebook_is_imported_although_an_audiobook_of_that_name_exists(hass, monkeypatch, aioclient_mock):
+    job = await _setup(hass, monkeypatch, on=True, known=None)
+    bridge_mocks(aioclient_mock, [purchase(1, "Fremdes Buch")])
+    aioclient_mock.get(f"{ABS}/api/libraries", json={"libraries": LIBS}, headers=JSON)
+    aioclient_mock.get(f"{ABS}/api/libraries/{LIB}/items", json={"results": []}, headers=JSON)
+    aioclient_mock.get(f"{ABS}/api/libraries/lib-hb/items", json={"results": [_abs_item("a1", "Fremdes Buch", audio_files=4)]}, headers=JSON)   # the AUDIOBOOK is there
+    aioclient_mock.get(f"{ABS}/api/libraries/lib-hs/items", json={"results": []}, headers=JSON)
+    aioclient_mock.post(f"{ABS}/api/upload", text="OK")
+    summary = await job.async_run()
+    assert summary["imported"] == ["Fremdes Buch"] and summary["already"] == []

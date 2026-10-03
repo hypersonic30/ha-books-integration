@@ -159,6 +159,12 @@ class TolinoImporter:
         self.state.setdefault("done", {})
         self.state.setdefault("failed", {})
         self.state.setdefault("audio_kind", {})
+        if self.state.get("dedupe_v") != 2:
+            # Until 0.19.1 an ebook and an audiobook of the same title counted as the same book, so the one that came second was skipped
+            # as "already in Audiobookshelf". Look at those again with the right rule.
+            self.state["done"] = {pid: e for pid, e in self.state["done"].items() if e.get("how") != "already_in_abs"}
+            self.state["dedupe_v"] = 2
+            await self._store.async_save(self.state)
         owner = tolino_user_id(self._hass, self.account)
         kinds = sorted(self._kinds(tolino_config(self._hass, self.account))) if self.enabled else []
         added = bool(set(kinds) - set(self.state.get("kinds") or []))      # a kind that was not on before (ebooks, Hörbücher, Hörspiele)
@@ -239,7 +245,7 @@ class TolinoImporter:
         except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
             _LOGGER.warning("books: tolino import cannot read Audiobookshelf: %s", exc)
             return
-        known = ctx["known"]
+        known = ctx["known"]["ebook"]
         for n, book in enumerate(todo):
             pid, title = book["publicationId"], book.get("title") or book["publicationId"]
             if _norm(title) in known:
@@ -288,7 +294,7 @@ class TolinoImporter:
         except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
             _LOGGER.warning("books: tolino import cannot read Audiobookshelf: %s", exc)
             return
-        known, imported = ctx["known"], 0
+        known, imported = ctx["known"]["audio"], 0
         for n, book in enumerate(todo):
             pid, title = book["publicationId"], book.get("title") or book["publicationId"]
             if _norm(title) in known:
@@ -418,18 +424,26 @@ class TolinoImporter:
             self._hass.async_create_task(async_push(self._hass, "Aus deinem tolino importiert", f"Neu in der Bibliothek: {names}", targets=owner[CONF_NOTIFY_SERVICE]))
         return summary
 
-    async def _known_titles(self, abs_client: AbsClient, library_ids: list[str]) -> set[str]:
-        titles: set[str] = set()
+    async def _known_titles(self, abs_client: AbsClient, library_ids: list[str]) -> dict[str, set[str]]:
+        """Titles already in Audiobookshelf, apart by what they are: {"ebook": ..., "audio": ...}. An ebook and an audiobook of the same title are
+        different things (and one item can be both); an item that says neither counts for both, to be on the safe side."""
+        titles: dict[str, set[str]] = {"ebook": set(), "audio": set()}
         for lib in library_ids:
             page = 0
             while True:
                 data = await abs_client.get(f"/libraries/{lib}/items", params={"limit": 500, "page": page, "minified": 1})
                 results = (data or {}).get("results", [])
-                titles |= {_norm(((i.get("media") or {}).get("metadata") or {}).get("title", "")) for i in results}
+                for item in results:
+                    media = item.get("media") or {}
+                    title = _norm((media.get("metadata") or {}).get("title", ""))
+                    is_ebook = bool(media.get("ebookFormat"))
+                    is_audio = bool(media.get("numAudioFiles") or media.get("duration"))
+                    for kind, hit in (("ebook", is_ebook or not is_audio), ("audio", is_audio or not is_ebook)):
+                        if hit and title:
+                            titles[kind].add(title)
                 if len(results) < 500:
                     break
                 page += 1
-        titles.discard("")
         return titles
 
     async def _import_one(self, bridge: TolinoBridgeClient, abs_client: AbsClient, library: dict, book: dict, tag: str | None,
