@@ -25,7 +25,7 @@ OK = {"success": True, "data": "ok"}
     ("GET", "getIndex", {}, False), ("GET", "getComic", {"id": "72459"}, False), ("GET", "getWanted", {}, False),
     ("GET", "getHistory", {}, False), ("POST", "addComic", {"id": "72459"}, False), ("POST", "queueIssue", {"id": "448514"}, True),
     ("POST", "unqueueIssue", {"id": "448514"}, False), ("POST", "forceSearch", {}, True),
-    ("POST", "pauseComic", {"id": "72459"}, False), ("POST", "resumeComic", {"id": "72459"}, False),
+    ("POST", "pauseComic", {"id": "72459"}, False), ("POST", "resumeComic", {"id": "72459"}, False), ("POST", "delComic", {"id": "172339"}, False),
     ("post", "addComic", {"id": "72459", "authSig": "x"}, False),
 ])
 def test_allowed(method, cmd, query, background):
@@ -36,7 +36,7 @@ def test_allowed(method, cmd, query, background):
 
 @pytest.mark.parametrize("method,cmd,query", [
     # the dangerous half of Mylar's API
-    ("POST", "delComic", {"id": "1"}), ("GET", "delComic", {"id": "1"}), ("POST", "shutdown", {}), ("POST", "restart", {}),
+    ("GET", "delComic", {"id": "1"}), ("POST", "delComic", {}), ("POST", "delComic", {"id": "1", "delete_dir": "1"}), ("POST", "shutdown", {}), ("POST", "restart", {}),
     ("POST", "update", {}), ("GET", "getAPI", {}), ("GET", "getLogs", {}), ("POST", "clearLogs", {}),
     ("GET", "listProviders", {}), ("POST", "addProvider", {"name": "x"}), ("POST", "delProvider", {"name": "x"}),
     ("POST", "changeProvider", {"name": "x"}), ("POST", "forceProcess", {"nzb_name": "x", "nzb_folder": "/etc"}),
@@ -136,7 +136,7 @@ async def test_failed_background_search_is_survivable(hass, mylar_entry, hass_cl
 
 
 @pytest.mark.parametrize("method,path", [
-    ("post", "delComic?id=1"), ("get", "getLogs"), ("post", "shutdown"), ("get", "getAPI"), ("post", "forceProcess?nzb_name=x&nzb_folder=/"),
+    ("get", "delComic?id=1"), ("post", "delComic?id=1&delete_dir=1"), ("get", "getLogs"), ("post", "shutdown"), ("get", "getAPI"), ("post", "forceProcess?nzb_name=x&nzb_folder=/"),
     ("get", "listProviders"), ("get", ""), ("post", "findComic?name=x"),
 ])
 async def test_blocked_requests_never_reach_mylar(hass, mylar_entry, hass_client, aioclient_mock, method, path):

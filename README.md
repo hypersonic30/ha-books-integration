@@ -226,7 +226,8 @@ Change anything later with the integration's **Reconfigure** action; it applies 
 | `/api/books/abs/{path}` | Audiobookshelf `/api/{path}` (streamed) |
 | `POST /api/books/add` | adds a search result as ebook/audiobook, "only this book" |
 | `/api/books/komga/{path}` | Komga `/api/{path}` — reading, progress, rescan only (strict allow-list; the person's own key) |
-| `/api/books/mylar/{command}` | Mylar3 `/api?cmd={command}` — search, add, queue volumes (allow-list per command and parameter; slow searches answer `202` and run in the background) |
+| `/api/books/mylar/{command}` | Mylar3 `/api?cmd={command}` — search, add, queue volumes, remove a series (`delComic`: database only, files stay) (allow-list per command and parameter; slow searches answer `202` and run in the background) |
+| `POST /api/books/downloads/remove` `{queue_id | book_id, blocklist?, remove_book?, remove_author?}` | the trash button of the Books card's download list: takes a Chaptarr queue entry off the downloader (and by default onto the blocklist, without a new search) and optionally deletes the book / the author with his whole catalog - only when no file of them exists; imported files are never deleted. Not for locked people |
 | `POST /api/books/tags` `{item_id, tag, tagged}` | release a book for a person (`für NAME`) or for everybody (`für alle`) or take it back; only these tags, never for locked people; written with the shared Audiobookshelf user (needs "update") |
 | `GET /api/books/people` | the people with their tag (`name`, `tag`, `me`) and `restricted` (the asker is locked; then only themselves are listed) - what the card's person chips and tabs are built from |
 | `GET /api/books/tolino` | status of the asking person's tolino account (`enabled` is false for people without a tolino; `reachable`, `logged_in`, `error`, `sent`) |

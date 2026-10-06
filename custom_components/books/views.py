@@ -27,6 +27,7 @@ from .chaptarr_policy import chaptarr_allowed
 from .komga_policy import komga_allowed
 from .mylar_policy import mylar_request
 from .tolino_registry import async_ensure_registry
+from .downloads import RemoveError, async_remove_from_chaptarr
 from .restriction import RESTRICTED, gate, is_restricted
 from .tags import SHARED_TAG, async_set_tag, person_tag
 from .users import NO_PERSON, access_denied, account_for_user, config_for, get_users, tolino_allowed, user_of
@@ -574,6 +575,43 @@ class PeopleView(HomeAssistantView):
                   for uid, p in get_users(self._hass).items() if (tag := person_tag(p)) and (uid == me or not restricted)]
         # restricted: only themselves, the card closes search/downloads and cannot tag; `shared_tag` is the "for everybody" tag
         return web.json_response({"people": people, "restricted": restricted, "can_tag": not restricted, "shared_tag": SHARED_TAG})
+
+
+class DownloadRemoveView(HomeAssistantView):
+    """POST /api/books/downloads/remove {queue_id | book_id, blocklist?, remove_book?, remove_author?} — the trash button of the Books card's download
+    list (see downloads.py for what is, and what is never, removed)."""
+
+    url = "/api/books/downloads/remove"
+    name = "api:books:downloads-remove"
+    requires_auth = True
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self._hass = hass
+
+    async def post(self, request: web.Request) -> web.Response:
+        if access_denied(self._hass, user_of(request)):
+            return web.json_response(NO_PERSON, status=403)
+        if (blocked := await gate(self._hass, user_of(request), "Chaptarr")) is not None:
+            return web.json_response(blocked, status=403)
+        try:
+            data = await request.json()
+        except ValueError:
+            return web.json_response({"error": "Invalid JSON"}, status=400)
+        ids = {k: data.get(k) for k in ("queue_id", "book_id") if data.get(k) is not None}
+        flags = {k: data.get(k, default) for k, default in (("blocklist", True), ("remove_book", False), ("remove_author", False))}
+        if (not ids or any(type(v) is not int or v < 1 for v in ids.values()) or len(ids) > 1
+                or any(type(v) is not bool for v in flags.values())):
+            return web.json_response({"error": "exactly one of queue_id / book_id (a number) and true/false flags are required", "code": "bad_request"}, status=400)
+        client = ChaptarrClient(self._hass, get_config(self._hass))
+        try:
+            result = await async_remove_from_chaptarr(client, **ids, **flags)
+        except RemoveError as exc:
+            return web.json_response({"error": exc.message, "code": exc.code}, status=exc.status)
+        except UpstreamError as exc:
+            return web.json_response({"error": f"Chaptarr: HTTP {exc.status}"}, status=502)
+        except (aiohttp.ClientError, TimeoutError) as exc:
+            return web.json_response({"error": f"Cannot connect to Chaptarr: {exc}"}, status=503)
+        return web.json_response(result)
 
 
 class TagView(HomeAssistantView):

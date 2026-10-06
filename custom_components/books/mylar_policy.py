@@ -20,6 +20,8 @@ _COMMANDS: dict[str, tuple[str, dict[str, re.Pattern], bool]] = {
     "queueIssue": ("POST", {"id": _ID}, True),
     "forceSearch": ("POST", {}, True),
     "unqueueIssue": ("POST", {"id": _ID}, False),
+    # Takes a series out of Mylar's database (Mylar does not delete the files on disk) - what the manga card's "Serie entfernen" does.
+    "delComic": ("POST", {"id": _ID}, False),
     "pauseComic": ("POST", {"id": _ID}, False),
     "resumeComic": ("POST", {"id": _ID}, False),
 }

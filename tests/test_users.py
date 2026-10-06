@@ -691,3 +691,13 @@ async def test_a_missing_update_permission_is_explained(hass, household, cast, l
     _tag_mocks(aioclient_mock, [], patch_status=403)
     resp = await (await login(cast["anna"])).post("/api/books/tags", json={"item_id": "b1", "tag": "für Ben", "tagged": True})
     assert resp.status == 502 and (await resp.json())["code"] == "abs_update_denied"
+
+
+async def test_a_restricted_person_cannot_remove_anything_from_the_download_list(hass, household, cast, login, aioclient_mock):
+    await _lock_ben(hass, household, cast)
+    aioclient_mock.get(f"{CHAPTARR}/api/v1/queue", json={"records": [{"id": 1, "bookId": 2, "authorId": 3}]}, headers=JSON)
+    aioclient_mock.delete(f"{CHAPTARR}/api/v1/queue/1", status=200, json={})
+    resp = await (await login(cast["ben"])).post("/api/books/downloads/remove", json={"queue_id": 1})
+    assert resp.status == 403 and (await resp.json())["code"] == "restricted" and not aioclient_mock.mock_calls
+    ok = await (await login(cast["anna"])).post("/api/books/downloads/remove", json={"queue_id": 1})      # an ordinary person can
+    assert ok.status == 200
