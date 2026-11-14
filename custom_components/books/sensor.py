@@ -8,8 +8,8 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .api import TolinoBridgeClient, get_config
-from .const import DOMAIN, SIGNAL_AUTOSEND_UPDATED, SIGNAL_SYNC_UPDATED
+from .api import NzbgetClient, ProwlarrClient, TolinoBridgeClient, get_config
+from .const import DOMAIN, SIGNAL_AUTOSEND_UPDATED, SIGNAL_FALLBACK_UPDATED, SIGNAL_SYNC_UPDATED
 
 DEVICE = DeviceInfo(identifiers={(DOMAIN, "tolino_bridge")}, name="tolino-Bridge")
 
@@ -82,6 +82,39 @@ class AutoSendSensor(_JobSensor):
         return {**(one(first) if first else {}), "accounts": {a: one(j["auto_send"]) for a, j in jobs.items()}}
 
 
+class FallbackSearchSensor(_JobSensor):
+    """State: when the Prowlarr fallback search last found something; attributes: enabled, pending, given up."""
+
+    _attr_translation_key = "fallback_search"
+    _attr_unique_id = "books_chaptarr_fallback_search"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_device_info = None       # not part of the tolino-Bridge device (_JobSensor's default): unrelated feature
+    _signal = SIGNAL_FALLBACK_UPDATED
+
+    def _job(self):
+        return self._hass.data[DOMAIN]["chaptarr_fallback"]
+
+    @property
+    def native_value(self):
+        return (self._job().last_run or {}).get("at")
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        job = self._job()
+        state = job.state
+        return {
+            "enabled": job.enabled,
+            "grabbed_last_run": (job.last_run or {}).get("grabbed", []),
+            "pending": len(state.get("tried", {})),
+            "given_up": len(state.get("failed", {})),
+        }
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+    entities = []
     if TolinoBridgeClient(hass, get_config(hass)).configured:
-        async_add_entities([ProgressSyncSensor(hass), AutoSendSensor(hass)])
+        entities += [ProgressSyncSensor(hass), AutoSendSensor(hass)]
+    cfg = get_config(hass)
+    if ProwlarrClient(hass, cfg).configured and NzbgetClient(hass, cfg).configured:
+        entities.append(FallbackSearchSensor(hass))
+    async_add_entities(entities)

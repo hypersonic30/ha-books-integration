@@ -47,6 +47,12 @@ no entities; with one it adds a few status entities (below).
   attempt; a failed attempt creates a Home Assistant notification and, optionally, a push
   notification to notify entities or services.
 
+- **Fallback search (optional, off by default)** — some indexers spell a German release differently than Chaptarr's own
+  metadata-derived search term (e.g. "ü" transliterated as "ue"), so Chaptarr's search finds nothing even though the release
+  exists. When a wanted book stays unavailable for a day, the integration asks Prowlarr directly with umlauts spelled out and,
+  on a strict match (no TV/movie-style naming, a plausible category, every significant title word present), hands the NZB to
+  NZBGet under the category Chaptarr's own download client already watches, so Chaptarr imports it exactly as if it had found
+  it itself. Needs Prowlarr and NZBGet credentials in the settings; see below.
 - **Manga (optional)** — proxies for Komga (reading, progress) and Mylar3 (search, add, download) with strict allow-lists; see below.
 - **People (optional)** — every Home Assistant user can have their own Komga/Audiobookshelf account, notify target and tolino account.
 - **tolino (optional)** — send ebooks to the tolino Cloud, automatically if you like, and carry reading progress both ways; one Thalia
@@ -91,6 +97,7 @@ Copy `custom_components/books/` into `config/custom_components/` and restart Hom
 | event `books_tolino_sent` | a book reached the tolino Cloud: `item_id`, `title`, `filename`, `deliverable_id`, `replaced`, `auto` (true = auto-send, false = the card's button) |
 | event `books_wish_fulfilled` | a book or manga volume somebody asked for is in the library: `user`, `kind` (`book`/`manga`), `title` |
 | event `books_tolino_progress_synced` | a reading state was carried over: `item_id`, `direction` (`tolino_to_abs` / `abs_to_tolino`), `finished` |
+| `sensor` *Last fallback search* (with Prowlarr + NZBGet configured) | timestamp of the last successful fallback-search run; attributes `enabled`, `grabbed_last_run`, `pending` (books waiting for their next retry), `given_up` |
 
 Use the events for automations, e.g. a push "New book is on your tolino – sync the app" when `books_tolino_sent` fires with `auto: true`.
 
@@ -110,6 +117,17 @@ parameter: `findComic`, `getIndex`, `getComic`, `getWanted`, `getHistory` (GET) 
 `pauseComic`, `resumeComic`, `forceSearch` (POST). Everything else is refused with 403. `queueIssue` and `forceSearch` only answer
 when every indexer has been asked (over a minute was seen), so the proxy answers `202` at once and lets Mylar finish in the
 background; the card follows progress through `getWanted`/`getHistory`.
+
+### Fallback search (optional): Prowlarr + NZBGet
+
+Off by default. With a Prowlarr URL/API key, an NZBGet URL/username/password and the toggle switched on, the integration
+retries books that have stayed "wanted" in Chaptarr for at least a day: it asks Prowlarr directly with German umlauts spelled
+out (ä→ae, ö→oe, ü→ue, ß→ss) and, if a result passes a strict filter (usenet only, no `S01E02`-style episode naming, a
+plausible audio/book category, every significant word of the title present), downloads that release's NZB and hands it to
+NZBGet under the category Chaptarr's own download client uses (Chaptarr → Settings → Download Clients; must match, default
+`Chaptarr`) — Chaptarr's completed-download handling then imports it on its own, exactly as if it had found the release
+itself. Up to 3 books are tried per hour; a book that is never found gives up after 10 days and notifies once. If Prowlarr or
+NZBGet cannot be reached, a repair hint appears and clears again once a run succeeds.
 
 ### People (required)
 
@@ -199,6 +217,9 @@ Settings → Devices & Services → Add Integration → **Books**:
 | Komga URL / API key | optional, for the Manga Card: address of your Komga and the API key of a Komga user **without admin rights** (an admin key is refused). Checked when you save |
 | Mylar3 URL / API key | optional, for searching and downloading manga in the Manga Card: address of Mylar3 and its API key (Mylar → Settings → Web Interface → API, enable it first). Checked when you save |
 | Tolino bridge URL / token | optional: address of your tolino-bridge (e.g. `http://192.168.1.10:8199`) and its token (`deploy.sh token`). Leave empty to disable "send to Tolino" |
+| Prowlarr URL / API key | optional, only used by the fallback search below: address of Prowlarr and its API key (Prowlarr → Settings → General → API Key) |
+| NZBGet URL / username / password / category | optional, only used by the fallback search below: address of NZBGet and its login (NZBGet → Settings → Security); category must match the one Chaptarr's own download client uses (default `Chaptarr`) |
+| Fallback search via Prowlarr | optional, off by default: see *Fallback search* above. Needs Prowlarr and NZBGet filled in |
 | Verify SSL | disable only for self-signed certificates |
 | Automatically repair blocked imports | see above (default on) |
 | Notification target | optional: a notify entity (e.g. `notify.iphone`, as used by `notify.send_message`) or a legacy notify service (e.g. `notify.mobile_app_iphone`); several separated by commas — told when a repair fails |

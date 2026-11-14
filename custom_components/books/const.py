@@ -36,12 +36,25 @@ CONF_RESTRICT_BOOKS = "restrict_books"
 CONF_SYNC_PROGRESS = "sync_progress"
 CONF_SYNC_PROGRESS_WRITE = "sync_progress_write"
 
+# Second-stage search: when Chaptarr's own search for a wanted book stays empty (e.g. a German release
+# transliterates ü/ö/ä/ß differently than Chaptarr's metadata-derived query), ask Prowlarr directly and, on a
+# strict match, hand the NZB to NZBGet under Chaptarr's own watched category so Chaptarr imports it itself.
+CONF_PROWLARR_URL = "prowlarr_url"
+CONF_PROWLARR_API_KEY = "prowlarr_api_key"
+CONF_NZBGET_URL = "nzbget_url"
+CONF_NZBGET_USERNAME = "nzbget_username"
+CONF_NZBGET_PASSWORD = "nzbget_password"
+CONF_NZBGET_CATEGORY = "nzbget_category"
+CONF_FALLBACK_SEARCH = "fallback_search"
+
 DEFAULT_VERIFY_SSL = True
 DEFAULT_RESCUE_IMPORTS = True
 DEFAULT_DEBUG_LOGGING = False
 DEFAULT_AUTO_SEND = False
 DEFAULT_SYNC_PROGRESS = False
 DEFAULT_SYNC_PROGRESS_WRITE = False
+DEFAULT_NZBGET_CATEGORY = "Chaptarr"
+DEFAULT_FALLBACK_SEARCH = False
 
 REQUEST_TIMEOUT = 10
 # Chaptarr's /release and /search endpoints query every indexer synchronously.
@@ -59,6 +72,7 @@ TOLINO_MAX_COVER_BYTES = 10 * 1024 * 1024
 
 SIGNAL_SYNC_UPDATED = "books_progress_sync_updated"
 SIGNAL_AUTOSEND_UPDATED = "books_autosend_updated"
+SIGNAL_FALLBACK_UPDATED = "books_fallback_search_updated"
 # Bus events for automations (payloads documented in the README)
 EVENT_TOLINO_SENT = "books_tolino_sent"
 EVENT_PROGRESS_SYNCED = "books_tolino_progress_synced"
@@ -67,6 +81,17 @@ RESCUE_INTERVAL_SECONDS = 120
 SYNC_INTERVAL_SECONDS = 600
 AUTO_SEND_INTERVAL_SECONDS = 600
 IMPORT_INTERVAL_SECONDS = 600
+
+# Chaptarr fallback search (second stage via Prowlarr + NZBGet, see chaptarr_fallback.py)
+FALLBACK_INTERVAL_SECONDS = 3600
+FALLBACK_SCAN_LIMIT = 60             # wanted/missing records looked at per tick, newest first - not the whole backlog
+FALLBACK_MAX_PER_RUN = 3             # Prowlarr queries per tick - indexers have hourly rate limits
+FALLBACK_MIN_AGE_SECONDS = 24 * 3600     # give Chaptarr's own search/RSS cycle a fair chance first
+FALLBACK_RETRY_SECONDS = 24 * 3600       # cooldown between our own attempts for the same book
+FALLBACK_MAX_ATTEMPTS = 10            # then give up and notify once, instead of retrying forever
+# Newznab categories a fallback match may come from: Audio (3xxx), Books/Other (7xxx) - excludes TV/Movies/etc.,
+# which is what the literal "S01E25"-style false positives in this indexer's library turned out to be.
+NEWZNAB_ALLOWED_RANGES = (range(3000, 4000), range(7000, 8000))
 
 # Chaptarr API areas the card never needs. They hold indexer/download-client
 # credentials or can reconfigure/shut down Chaptarr, so the proxy refuses them

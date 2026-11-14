@@ -1,6 +1,7 @@
 """Small async clients for Chaptarr and Audiobookshelf, shared by views and the import rescue."""
 from __future__ import annotations
 
+import base64
 from json import loads as json_loads
 from typing import Any
 
@@ -17,11 +18,17 @@ from .const import (
     CONF_CHAPTARR_URL,
     CONF_KOMGA_API_KEY,
     CONF_KOMGA_URL,
+    CONF_NZBGET_PASSWORD,
+    CONF_NZBGET_URL,
+    CONF_NZBGET_USERNAME,
+    CONF_PROWLARR_API_KEY,
+    CONF_PROWLARR_URL,
     CONF_TOLINO_TOKEN,
     CONF_TOLINO_URL,
     CONF_VERIFY_SSL,
     DOMAIN,
     REQUEST_TIMEOUT,
+    SLOW_REQUEST_TIMEOUT,
 )
 
 
@@ -167,6 +174,52 @@ class TolinoBridgeClient(_Client):
     @property
     def configured(self) -> bool:
         return bool(self.base_url) and self.headers["Authorization"] != "Bearer "
+
+
+class ProwlarrClient(_Client):
+    """Prowlarr /api/v1 with X-Api-Key auth. Used only by the Chaptarr fallback search (chaptarr_fallback.py) to
+    query indexers directly when Chaptarr's own search comes back empty - never by the card proxy."""
+
+    def __init__(self, hass: HomeAssistant, cfg: dict) -> None:
+        super().__init__(
+            hass,
+            f"{(cfg.get(CONF_PROWLARR_URL) or '').rstrip('/')}/api/v1",
+            {"X-Api-Key": cfg.get(CONF_PROWLARR_API_KEY) or ""},
+            cfg.get(CONF_VERIFY_SSL, True),
+        )
+        self.configured = bool(cfg.get(CONF_PROWLARR_URL)) and bool(cfg.get(CONF_PROWLARR_API_KEY))
+
+
+class NzbgetClient(_Client):
+    """NZBGet's JSON-RPC API (HTTP Basic Auth), for the one call the fallback search needs: handing it an NZB
+    directly under Chaptarr's own watched category so Chaptarr's completed-download handling imports it."""
+
+    def __init__(self, hass: HomeAssistant, cfg: dict) -> None:
+        user = cfg.get(CONF_NZBGET_USERNAME) or ""
+        password = cfg.get(CONF_NZBGET_PASSWORD) or ""
+        token = base64.b64encode(f"{user}:{password}".encode()).decode()
+        super().__init__(
+            hass,
+            (cfg.get(CONF_NZBGET_URL) or "").rstrip("/"),
+            {"Authorization": f"Basic {token}"},
+            cfg.get(CONF_VERIFY_SSL, True),
+        )
+        self.configured = bool(cfg.get(CONF_NZBGET_URL)) and bool(user)
+
+    async def append(self, *, filename: str, content_b64: str, category: str, dupe_key: str) -> int:
+        """Adds an NZB (its content, base64-encoded) to NZBGet's queue; returns the new NZBID.
+
+        Positional JSON-RPC params per nzbgetcom/nzbget docs/api/APPEND.md (JSON-RPC takes no named args):
+        Filename, Content, Category, Priority, AddToTop, AddPaused, DupeKey, DupeScore, DupeMode, AutoCategory,
+        PPParameters. `dupe_key` is set by the caller so NZBGet's own dupe-check is a second line of defense
+        against a double-grab if our local state was somehow lost between a grab and its save."""
+        body = {"method": "append", "params": [
+            filename, content_b64, category, 0, False, False, dupe_key, 0, "SCORE", False, []]}
+        resp = await self.post("/jsonrpc", json=body, timeout=SLOW_REQUEST_TIMEOUT)
+        result = resp.get("result") if isinstance(resp, dict) else None
+        if not isinstance(resp, dict) or resp.get("error") or not isinstance(result, int) or result <= 0:
+            raise UpstreamError(200, f"NZBGet append failed: {resp}")
+        return result
 
 
 async def async_bridge_accounts(hass: HomeAssistant, cfg: dict) -> list[str] | None:

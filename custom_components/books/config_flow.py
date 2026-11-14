@@ -1,6 +1,7 @@
 """Config flow for the Books integration."""
 from __future__ import annotations
 
+import base64
 import logging
 import re
 
@@ -46,11 +47,18 @@ from .const import (
     CONF_CHAPTARR_API_KEY,
     CONF_CHAPTARR_URL,
     CONF_DEBUG_LOGGING,
+    CONF_FALLBACK_SEARCH,
     CONF_KOMGA_API_KEY,
     CONF_KOMGA_URL,
     CONF_MYLAR_API_KEY,
     CONF_MYLAR_URL,
     CONF_NOTIFY_SERVICE,
+    CONF_NZBGET_CATEGORY,
+    CONF_NZBGET_PASSWORD,
+    CONF_NZBGET_URL,
+    CONF_NZBGET_USERNAME,
+    CONF_PROWLARR_API_KEY,
+    CONF_PROWLARR_URL,
     CONF_RESCUE_IMPORTS,
     CONF_SYNC_PROGRESS,
     CONF_SYNC_PROGRESS_WRITE,
@@ -58,6 +66,8 @@ from .const import (
     CONF_TOLINO_URL,
     CONF_VERIFY_SSL,
     DEFAULT_DEBUG_LOGGING,
+    DEFAULT_FALLBACK_SEARCH,
+    DEFAULT_NZBGET_CATEGORY,
     DEFAULT_RESCUE_IMPORTS,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
@@ -82,6 +92,24 @@ def _schema(defaults: dict) -> vol.Schema:
         vol.Optional(CONF_MYLAR_API_KEY, description={"suggested_value": defaults.get(CONF_MYLAR_API_KEY, "")}): _PASSWORD,
         vol.Optional(CONF_TOLINO_URL, description={"suggested_value": defaults.get(CONF_TOLINO_URL, "")}): _URL,
         vol.Optional(CONF_TOLINO_TOKEN, description={"suggested_value": defaults.get(CONF_TOLINO_TOKEN, "")}): _PASSWORD,
+        vol.Optional(CONF_PROWLARR_URL, description={"suggested_value": defaults.get(CONF_PROWLARR_URL, "")}): _URL,
+        vol.Optional(
+            CONF_PROWLARR_API_KEY, description={"suggested_value": defaults.get(CONF_PROWLARR_API_KEY, "")}
+        ): _PASSWORD,
+        vol.Optional(CONF_NZBGET_URL, description={"suggested_value": defaults.get(CONF_NZBGET_URL, "")}): _URL,
+        vol.Optional(
+            CONF_NZBGET_USERNAME, description={"suggested_value": defaults.get(CONF_NZBGET_USERNAME, "")}
+        ): str,
+        vol.Optional(
+            CONF_NZBGET_PASSWORD, description={"suggested_value": defaults.get(CONF_NZBGET_PASSWORD, "")}
+        ): _PASSWORD,
+        vol.Optional(
+            CONF_NZBGET_CATEGORY,
+            description={"suggested_value": defaults.get(CONF_NZBGET_CATEGORY, DEFAULT_NZBGET_CATEGORY)},
+        ): str,
+        vol.Required(
+            CONF_FALLBACK_SEARCH, default=defaults.get(CONF_FALLBACK_SEARCH, DEFAULT_FALLBACK_SEARCH)
+        ): bool,
         vol.Required(CONF_VERIFY_SSL, default=defaults.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)): bool,
         vol.Required(
             CONF_RESCUE_IMPORTS, default=defaults.get(CONF_RESCUE_IMPORTS, DEFAULT_RESCUE_IMPORTS)
@@ -224,6 +252,49 @@ async def _check_mylar(hass: HomeAssistant, url: str, key: str, verify_ssl: bool
     return "mylar_invalid_auth" if code == 460 else "not_mylar"
 
 
+async def _check_prowlarr(hass: HomeAssistant, url: str, api_key: str, verify_ssl: bool) -> str | None:
+    session = async_get_clientsession(hass, verify_ssl=verify_ssl)
+    try:
+        async with session.get(
+            f"{url}/api/v1/system/status",
+            headers={"X-Api-Key": api_key},
+            timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
+        ) as resp:
+            if resp.status == 401:
+                return "prowlarr_invalid_auth"
+            if resp.status != 200:
+                return "prowlarr_cannot_connect"
+            status = await resp.json(content_type=None)
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        return _error_key("prowlarr", url, err)
+    if str((status or {}).get("appName", "")).lower() != "prowlarr":
+        _LOGGER.warning("books: %s is %s, not Prowlarr", url, (status or {}).get("appName"))
+        return "not_prowlarr"
+    return None
+
+
+async def _check_nzbget(hass: HomeAssistant, url: str, user: str, password: str, verify_ssl: bool) -> str | None:
+    token = base64.b64encode(f"{user}:{password}".encode()).decode()
+    session = async_get_clientsession(hass, verify_ssl=verify_ssl)
+    try:
+        async with session.post(
+            f"{url}/jsonrpc",
+            headers={"Authorization": f"Basic {token}"},
+            json={"method": "version", "params": []},
+            timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
+        ) as resp:
+            if resp.status == 401:
+                return "nzbget_invalid_auth"
+            if resp.status != 200:
+                return "nzbget_cannot_connect"
+            body = await resp.json(content_type=None)
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        return _error_key("nzbget", url, err)
+    if not isinstance(body, dict) or "result" not in body:
+        return "nzbget_invalid_auth" if isinstance(body, dict) and body.get("error") else "not_nzbget"
+    return None
+
+
 async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, str]]:
     data = {**data}
     errors: dict[str, str] = {}
@@ -256,6 +327,29 @@ async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, st
         errors[CONF_TOLINO_TOKEN] = "tolino_token_missing"
     elif data[CONF_TOLINO_TOKEN] and not data[CONF_TOLINO_URL]:
         errors[CONF_TOLINO_URL] = "tolino_url_missing"
+    data[CONF_PROWLARR_URL] = (data.get(CONF_PROWLARR_URL) or "").strip().rstrip("/")
+    data[CONF_PROWLARR_API_KEY] = (data.get(CONF_PROWLARR_API_KEY) or "").strip()
+    if data[CONF_PROWLARR_URL] and not data[CONF_PROWLARR_URL].startswith(("http://", "https://")):
+        errors[CONF_PROWLARR_URL] = "invalid_url"
+    elif data[CONF_PROWLARR_URL] and not data[CONF_PROWLARR_API_KEY]:
+        errors[CONF_PROWLARR_API_KEY] = "prowlarr_key_missing"
+    elif data[CONF_PROWLARR_API_KEY] and not data[CONF_PROWLARR_URL]:
+        errors[CONF_PROWLARR_URL] = "prowlarr_url_missing"
+    data[CONF_NZBGET_URL] = (data.get(CONF_NZBGET_URL) or "").strip().rstrip("/")
+    data[CONF_NZBGET_USERNAME] = (data.get(CONF_NZBGET_USERNAME) or "").strip()
+    data[CONF_NZBGET_PASSWORD] = (data.get(CONF_NZBGET_PASSWORD) or "").strip()
+    data[CONF_NZBGET_CATEGORY] = (data.get(CONF_NZBGET_CATEGORY) or "").strip()
+    if data[CONF_NZBGET_URL] and not data[CONF_NZBGET_URL].startswith(("http://", "https://")):
+        errors[CONF_NZBGET_URL] = "invalid_url"
+    elif data[CONF_NZBGET_URL] and not (data[CONF_NZBGET_USERNAME] and data[CONF_NZBGET_PASSWORD]):
+        errors[CONF_NZBGET_USERNAME] = "nzbget_login_missing"
+    elif (data[CONF_NZBGET_USERNAME] or data[CONF_NZBGET_PASSWORD]) and not data[CONF_NZBGET_URL]:
+        errors[CONF_NZBGET_URL] = "nzbget_url_missing"
+    if data.get(CONF_FALLBACK_SEARCH):
+        if not (data[CONF_PROWLARR_URL] and data[CONF_PROWLARR_API_KEY]):
+            errors[CONF_FALLBACK_SEARCH] = "fallback_search_needs_prowlarr"
+        elif not (data[CONF_NZBGET_URL] and data[CONF_NZBGET_USERNAME] and data[CONF_NZBGET_PASSWORD]):
+            errors[CONF_FALLBACK_SEARCH] = "fallback_search_needs_nzbget"
     # The tolino features silently do nothing without their prerequisites - say so in the form instead.
     if errors:
         return data, errors
@@ -273,6 +367,12 @@ async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, st
     if data[CONF_TOLINO_URL]:
         if err := await _check_tolino(hass, data[CONF_TOLINO_URL], data[CONF_TOLINO_TOKEN], verify):
             errors[CONF_TOLINO_TOKEN if "auth" in err else CONF_TOLINO_URL] = err
+    if data[CONF_PROWLARR_URL]:
+        if err := await _check_prowlarr(hass, data[CONF_PROWLARR_URL], data[CONF_PROWLARR_API_KEY], verify):
+            errors[CONF_PROWLARR_API_KEY if "auth" in err else CONF_PROWLARR_URL] = err
+    if data[CONF_NZBGET_URL]:
+        if err := await _check_nzbget(hass, data[CONF_NZBGET_URL], data[CONF_NZBGET_USERNAME], data[CONF_NZBGET_PASSWORD], verify):
+            errors[CONF_NZBGET_USERNAME if "auth" in err else CONF_NZBGET_URL] = err
     return data, errors
 
 

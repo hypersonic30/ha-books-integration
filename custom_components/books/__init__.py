@@ -14,6 +14,7 @@ from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
     AUTO_SEND_INTERVAL_SECONDS,
+    FALLBACK_INTERVAL_SECONDS,
     IMPORT_INTERVAL_SECONDS,
     WISH_INTERVAL_SECONDS,
     CONF_DEBUG_LOGGING,
@@ -23,6 +24,7 @@ from .const import (
     SYNC_INTERVAL_SECONDS,
 )
 from .api import TolinoBridgeClient
+from .chaptarr_fallback import ChaptarrFallbackSearch
 from .rescue import ImportRescue
 from .jobs import async_ensure_jobs, async_refresh_users
 from .tolino_move import async_move_account
@@ -89,6 +91,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await data["wishes"].async_load()
     entry.async_on_unload(
         async_track_time_interval(hass, data["wishes"].async_tick, timedelta(seconds=WISH_INTERVAL_SECONDS))
+    )
+
+    if "chaptarr_fallback" not in data:
+        data["chaptarr_fallback"] = ChaptarrFallbackSearch(hass)
+        await data["chaptarr_fallback"].async_load()
+    entry.async_on_unload(
+        async_track_time_interval(
+            hass, data["chaptarr_fallback"].async_tick, timedelta(seconds=FALLBACK_INTERVAL_SECONDS)
+        )
     )
 
     # One progress-sync and one auto-send job per bridge account (= per person with a Tolino); the default account's are
