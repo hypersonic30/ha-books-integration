@@ -158,6 +158,52 @@ class ChaptarrFallbackSearch:
                 _LOGGER.exception("books: Chaptarr fallback search failed")
                 return None
 
+    async def check_now(self, book_id: str, title: str, author_name: str = "") -> str:
+        """Try one specific book right away - e.g. right after Chaptarr's own search for it (just triggered by
+        the card's "add") came back empty - instead of waiting for the next hourly sweep and its
+        FALLBACK_MIN_AGE_SECONDS gate (Chaptarr already just had its fair, immediate chance).
+
+        Returns "disabled", "already_done", "given_up" (no point retrying), "grabbed", "no_match" or "error"."""
+        book_id = str(book_id)
+        if not self.enabled:
+            return "disabled"
+        if book_id in self.state["done"]:
+            return "already_done"
+        if book_id in self.state["failed"]:
+            return "given_up"
+        cfg = get_config(self._hass)
+        prowlarr = ProwlarrClient(self._hass, cfg)
+        nzbget = NzbgetClient(self._hass, cfg)
+        category = cfg.get(CONF_NZBGET_CATEGORY) or DEFAULT_NZBGET_CATEGORY
+        verify_ssl = cfg.get(CONF_VERIFY_SSL, True)
+        surname = author_name.rsplit(" ", 1)[-1] if author_name.strip() else ""
+        rec = {"localBookId": book_id, "title": title, "authorTitle": f"{surname}, {title}" if surname else ""}
+        summary = {"grabbed": [], "given_up": []}
+        try:
+            async with self._running:              # never run alongside the hourly sweep: both touch self.state
+                ok = await self._attempt(prowlarr, nzbget, category, verify_ssl, rec, summary)
+                await self._store.async_save(self.state)
+        except Exception:  # noqa: BLE001 - triggered from the add flow's background task, must never raise there
+            _LOGGER.exception("books: immediate fallback search for '%s' failed", title)
+            return "error"
+        if ok:
+            ir.async_delete_issue(self._hass, DOMAIN, ISSUE_UNREACHABLE)
+        else:
+            ir.async_create_issue(self._hass, DOMAIN, ISSUE_UNREACHABLE, is_fixable=False,
+                                  severity=ir.IssueSeverity.WARNING, translation_key=ISSUE_UNREACHABLE)
+        if summary["grabbed"]:
+            await async_push(self._hass, "Ersatzsuche erfolgreich",
+                             "Über Prowlarr gefunden, Chaptarr importiert jetzt: " + ", ".join(summary["grabbed"]))
+        for given_up_title in summary["given_up"]:
+            await async_push(self._hass, "Ersatzsuche aufgegeben",
+                             f"„{given_up_title}“ wurde auch über Prowlarr nicht gefunden. Bitte von Hand prüfen.")
+        if summary["grabbed"] or summary["given_up"]:
+            self.last_run = {"at": dt_util.utcnow(), **summary}
+            async_dispatcher_send(self._hass, SIGNAL_FALLBACK_UPDATED)
+        if not ok:
+            return "error"
+        return "grabbed" if summary["grabbed"] else ("given_up" if summary["given_up"] else "no_match")
+
     # -- one run --------------------------------------------------------------------------------------------
 
     def _candidates(self, records: list[dict]) -> list[dict]:
@@ -180,6 +226,49 @@ class ChaptarrFallbackSearch:
             out.append(rec)
         return out[:FALLBACK_MAX_PER_RUN]
 
+    async def _attempt(
+        self, prowlarr: ProwlarrClient, nzbget: NzbgetClient, category: str, verify_ssl: bool, rec: dict, summary: dict,
+    ) -> bool:
+        """One candidate: search Prowlarr, match strictly, grab a good hit. Shared by the hourly sweep and
+        `check_now`. Returns False only when Prowlarr/NZBGet themselves could not be reached (the caller stops
+        and flags the repair issue); True otherwise, whether that found a release, a non-match, or a give-up."""
+        book_id = str(rec.get("localBookId") or rec.get("id"))
+        title = str(rec.get("title") or "")
+        words = significant_words(title)
+        try:
+            results = await prowlarr.get(
+                "/search", params={"query": transliterate(title), "type": "search", "limit": 25},
+                timeout=SLOW_REQUEST_TIMEOUT,
+            )
+        except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
+            _LOGGER.debug("books: fallback search cannot reach Prowlarr for '%s': %s", title, exc)
+            return False
+        release = best_release(results or [], words, author_surname(rec))
+        if release is None:
+            self._give_up_or_retry(book_id, title, summary)
+            return True
+        try:
+            content = await _fetch_nzb_bytes(self._hass, release["downloadUrl"], verify_ssl)
+            nzb_id = await nzbget.append(
+                filename=str(release.get("fileName") or f"{release.get('title', title)}.nzb"),
+                content_b64=base64.b64encode(content).decode(),
+                category=category,
+                dupe_key=f"books-fallback-{book_id}",
+            )
+        except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
+            _LOGGER.warning("books: fallback search found a release for '%s' but NZBGet refused it: %s", title, exc)
+            return False
+        self.state["done"][book_id] = {
+            "title": title, "release": release.get("title"), "nzb_id": nzb_id, "at": dt_util.utcnow().isoformat(),
+        }
+        self.state["tried"].pop(book_id, None)
+        # Saved right away, not batched for the end of the run: a 300+ MB import can take a while, and a restart
+        # before this run finishes must not re-grab a book that already succeeded.
+        await self._store.async_save(self.state)
+        _LOGGER.info("books: fallback search found '%s' via Prowlarr, handed to NZBGet (id %s)", title, nzb_id)
+        summary["grabbed"].append(title)
+        return True
+
     async def _run(self) -> dict:
         cfg = get_config(self._hass)
         chaptarr = ChaptarrClient(self._hass, cfg)
@@ -199,43 +288,9 @@ class ChaptarrFallbackSearch:
             return summary
         unreachable = False
         for rec in candidates:
-            book_id = str(rec.get("localBookId") or rec.get("id"))
-            title = str(rec.get("title") or "")
-            words = significant_words(title)
-            try:
-                results = await prowlarr.get(
-                    "/search", params={"query": transliterate(title), "type": "search", "limit": 25},
-                    timeout=SLOW_REQUEST_TIMEOUT,
-                )
-            except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
-                _LOGGER.debug("books: fallback search cannot reach Prowlarr for '%s': %s", title, exc)
+            if not await self._attempt(prowlarr, nzbget, category, verify_ssl, rec, summary):
                 unreachable = True
                 break
-            release = best_release(results or [], words, author_surname(rec))
-            if release is None:
-                self._give_up_or_retry(book_id, title, summary)
-                continue
-            try:
-                content = await _fetch_nzb_bytes(self._hass, release["downloadUrl"], verify_ssl)
-                nzb_id = await nzbget.append(
-                    filename=str(release.get("fileName") or f"{release.get('title', title)}.nzb"),
-                    content_b64=base64.b64encode(content).decode(),
-                    category=category,
-                    dupe_key=f"books-fallback-{book_id}",
-                )
-            except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
-                _LOGGER.warning("books: fallback search found a release for '%s' but NZBGet refused it: %s", title, exc)
-                unreachable = True
-                break
-            self.state["done"][book_id] = {
-                "title": title, "release": release.get("title"), "nzb_id": nzb_id, "at": dt_util.utcnow().isoformat(),
-            }
-            self.state["tried"].pop(book_id, None)
-            # Saved right away, not batched for the end of the run: a 300+ MB import can take a while, and a
-            # restart before this run finishes must not re-grab a book that already succeeded.
-            await self._store.async_save(self.state)
-            _LOGGER.info("books: fallback search found '%s' via Prowlarr, handed to NZBGet (id %s)", title, nzb_id)
-            summary["grabbed"].append(title)
         if unreachable:
             ir.async_create_issue(
                 self._hass, DOMAIN, ISSUE_UNREACHABLE, is_fixable=False, severity=ir.IssueSeverity.WARNING,

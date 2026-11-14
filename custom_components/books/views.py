@@ -28,6 +28,7 @@ from .komga_policy import komga_allowed
 from .mylar_policy import mylar_request
 from .tolino_registry import async_ensure_registry
 from .downloads import RemoveError, async_remove_from_chaptarr
+from .rescue import wait_for_command
 from .restriction import RESTRICTED, gate, is_restricted
 from .tags import SHARED_TAG, async_set_tag, person_tag
 from .users import NO_PERSON, access_denied, account_for_user, config_for, get_users, tolino_allowed, user_of
@@ -387,6 +388,34 @@ def default_root_folders(root_folders: list[dict]) -> dict[str, dict]:
     return result
 
 
+async def _check_fallback_after_search(hass: HomeAssistant, client: ChaptarrClient, command_id, book_ids: list,
+                                       titles: dict, author_name: str) -> None:
+    """After AddBookView's BookSearch finishes, try the fallback search right away for anything Chaptarr still
+    could not find itself - instead of waiting for the hourly sweep and its one-day grace period (that period
+    only exists to give Chaptarr's own search a fair chance, and it just had exactly that)."""
+    job = hass.data.get(DOMAIN, {}).get("chaptarr_fallback")
+    if job is None or not command_id or not job.enabled:
+        return
+    try:
+        status = await wait_for_command(client, command_id)
+        if status.get("status") != "completed":
+            return
+        queue = (await client.get(
+            "/queue", params={"page": 1, "pageSize": 200, "includeUnknownAuthorItems": "true"})) or {}
+        queued_ids = {r.get("bookId") for r in queue.get("records", [])}
+        for book_id in book_ids:
+            if book_id in queued_ids:
+                continue                           # Chaptarr found something itself; it is downloading now
+            book = await client.get(f"/book/{book_id}")
+            if (book.get("statistics") or {}).get("bookFileCount"):
+                continue
+            await job.check_now(book_id, titles.get(book_id) or book.get("title") or "", author_name)
+    except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
+        _LOGGER.debug("books: could not check the fallback search after adding %s: %s", book_ids, exc)
+    except Exception:  # noqa: BLE001 - a background task must never raise
+        _LOGGER.exception("books: fallback-after-add check failed for %s", book_ids)
+
+
 class AddBookView(HomeAssistantView):
     """POST /api/books/add {book, media_types: ["ebook","audiobook"], search: true}."""
 
@@ -439,17 +468,21 @@ class AddBookView(HomeAssistantView):
         # so search explicitly for exactly the books that were just added.
         added_ids = [r["id"] for r in results if r["ok"] and r.get("id")]
         search_started = False
+        author = book.get("author") if isinstance(book.get("author"), dict) else {}
+        author_name = str(author.get("authorName") or "")
         if data.get("search", True) and added_ids:
             try:
-                await client.post("/command", {"name": "BookSearch", "bookIds": added_ids})
+                command = await client.post("/command", {"name": "BookSearch", "bookIds": added_ids})
                 search_started = True
+                titles = {r["id"]: r.get("title") for r in results if r.get("ok") and r.get("id")}
+                self._hass.async_create_task(_check_fallback_after_search(
+                    self._hass, client, (command or {}).get("id"), sorted(set(added_ids)), titles, author_name))
             except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
                 _LOGGER.warning("books: search for %s could not be started: %s", added_ids, exc)
         if any(r["ok"] for r in results):
-            author = book.get("author") if isinstance(book.get("author"), dict) else {}
             await self._hass.data[DOMAIN]["wishes"].async_add(
                 "book", user_of(request), title=str(book.get("title") or ""),
-                author=str(author.get("authorName") or book.get("authorTitle") or ""))
+                author=author_name or str(book.get("authorTitle") or ""))
         status = 200 if all(r["ok"] for r in results) else 207
         return web.json_response({"results": results, "search_started": search_started}, status=status)
 

@@ -120,9 +120,12 @@ background; the card follows progress through `getWanted`/`getHistory`.
 
 ### Fallback search (optional): Prowlarr + NZBGet
 
-Off by default. With a Prowlarr URL/API key, an NZBGet URL/username/password and the toggle switched on, the integration
-retries books that have stayed "wanted" in Chaptarr for at least a day: it asks Prowlarr directly with German umlauts spelled
-out (ä→ae, ö→oe, ü→ue, ß→ss) and, if a result passes a strict filter (usenet only, no `S01E02`-style episode naming, a
+Off by default. With a Prowlarr URL/API key, an NZBGet URL/username/password and the toggle switched on, two things happen:
+right after adding a book through the card, once Chaptarr's own search for it finishes and still found nothing (not even
+queued for download), the fallback runs immediately for that one book - no need to wait for Chaptarr's day-long grace period,
+since it just had its search already. Everything else that stays "wanted" in Chaptarr for at least a day is picked up by an
+hourly sweep. Both ask Prowlarr directly with German umlauts spelled out (ä→ae, ö→oe, ü→ue, ß→ss) and, if a result passes a
+strict filter (usenet only, no `S01E02`-style episode naming, a
 plausible audio/book category, every significant word of the title present), downloads that release's NZB and hands it to
 NZBGet under the category Chaptarr's own download client uses (Chaptarr → Settings → Download Clients; must match, default
 `Chaptarr`) — Chaptarr's completed-download handling then imports it on its own, exactly as if it had found the release

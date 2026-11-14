@@ -114,6 +114,18 @@ def allowed_quality_names(profile: dict) -> set[str]:
     return names
 
 
+async def wait_for_command(client: ChaptarrClient, command_id: int) -> dict:
+    """Polls `GET /command/{id}` until it reaches a terminal state (or COMMAND_TIMEOUT_SECONDS passes)."""
+    deadline = time.monotonic() + COMMAND_TIMEOUT_SECONDS
+    while True:
+        status = await client.get(f"/command/{command_id}")
+        if status.get("status") in ("completed", "failed", "aborted", "cancelled", "orphaned"):
+            return status
+        if time.monotonic() > deadline:
+            return {"status": "timeout"}
+        await asyncio.sleep(COMMAND_POLL_SECONDS)
+
+
 class ImportRescue:
     """Polls Chaptarr's queue and repairs unambiguous grabbed-vs-matched blocks."""
 
@@ -215,14 +227,7 @@ class ImportRescue:
             await self._fail(title, None, f"{exc.__class__.__name__}: {exc}")
 
     async def _wait_for_command(self, client: ChaptarrClient, command_id: int) -> dict:
-        deadline = time.monotonic() + COMMAND_TIMEOUT_SECONDS
-        while True:
-            status = await client.get(f"/command/{command_id}")
-            if status.get("status") in ("completed", "failed", "aborted", "cancelled", "orphaned"):
-                return status
-            if time.monotonic() > deadline:
-                return {"status": "timeout"}
-            await asyncio.sleep(COMMAND_POLL_SECONDS)
+        return await wait_for_command(client, command_id)
 
     def _event(self, kind: str, download: str, book: str | None, detail: str) -> None:
         self.events.appendleft({

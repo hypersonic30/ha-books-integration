@@ -1,5 +1,6 @@
 """Second-stage search: Chaptarr's own search for a wanted book stays empty -> ask Prowlarr directly with German
 umlauts spelled out -> hand a strict match to NZBGet under Chaptarr's own watched category."""
+import asyncio
 import base64
 from datetime import timedelta
 
@@ -286,3 +287,73 @@ async def test_disabled_without_the_toggle_even_with_full_credentials(hass, aioc
 async def test_disabled_without_nzbget_credentials(hass, aioclient_mock):
     job = await _setup(hass, **{CONF_NZBGET_USERNAME: ""})
     assert job.enabled is False
+
+
+# -- check_now: triggered right after the add flow's own BookSearch comes back empty -------------------------
+
+async def test_check_now_grabs_right_away_without_waiting_for_the_age_gate(hass, aioclient_mock):
+    """The book was *just* added (added=now), which the hourly sweep's FALLBACK_MIN_AGE_SECONDS would skip -
+    check_now must not care about that: Chaptarr's search just ran, so it already had its fair chance."""
+    job = await _setup(hass)
+    aioclient_mock.get(f"{PROWLARR}/api/v1/search", json=REAL_HITS, headers=JSON)
+    aioclient_mock.get(f"{PROWLARR}/1/download", content=b"fake nzb bytes")
+    aioclient_mock.post(f"{NZBGET}/jsonrpc", json={"version": "1.1", "result": 555}, headers=JSON)
+
+    result = await job.check_now("1164", WANTED_TITLE, "Elfie Donnelly")
+
+    assert result == "grabbed"
+    assert job.state["done"]["1164"]["nzb_id"] == 555
+    assert len(_nzb_posts(aioclient_mock)) == 1
+
+
+async def test_check_now_counts_a_miss_as_a_try_so_the_hourly_sweep_waits_before_retrying(hass, aioclient_mock):
+    job = await _setup(hass)
+    aioclient_mock.get(f"{PROWLARR}/api/v1/search", json=[], headers=JSON)
+
+    result = await job.check_now("1164", WANTED_TITLE)
+
+    assert result == "no_match"
+    assert job.state["tried"]["1164"]["attempts"] == 1
+
+
+async def test_check_now_reports_disabled_without_doing_anything(hass, aioclient_mock):
+    job = await _setup(hass, **{CONF_FALLBACK_SEARCH: False})
+
+    result = await job.check_now("1164", WANTED_TITLE)
+
+    assert result == "disabled"
+    assert not aioclient_mock.mock_calls
+
+
+async def test_check_now_skips_a_book_already_grabbed_or_given_up(hass, aioclient_mock):
+    job = await _setup(hass)
+    job.state["done"]["1164"] = {"title": WANTED_TITLE}
+    job.state["failed"]["2000"] = {"title": "Anderes"}
+
+    assert await job.check_now("1164", WANTED_TITLE) == "already_done"
+    assert await job.check_now("2000", "Anderes") == "given_up"
+    assert not aioclient_mock.mock_calls
+
+
+async def test_check_now_flags_the_repair_issue_when_prowlarr_is_unreachable(hass, aioclient_mock):
+    job = await _setup(hass)
+    aioclient_mock.get(f"{PROWLARR}/api/v1/search", exc=aiohttp.ClientConnectionError("down"))
+
+    result = await job.check_now("1164", WANTED_TITLE)
+
+    assert result == "error"
+    assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_UNREACHABLE) is not None
+
+
+async def test_check_now_waits_for_a_sweep_already_running_rather_than_racing_it(hass, aioclient_mock):
+    """Both check_now and the hourly sweep mutate self.state through the same lock - check_now must block on it,
+    not run alongside it."""
+    job = await _setup(hass)
+    aioclient_mock.get(f"{PROWLARR}/api/v1/search", json=[], headers=JSON)
+
+    async with job._running:                        # simulate a sweep already holding the lock
+        task = asyncio.ensure_future(job.check_now("1164", WANTED_TITLE))
+        await asyncio.sleep(0)
+        assert not task.done()                       # blocked on the same lock, not racing it
+
+    assert await task == "no_match"
