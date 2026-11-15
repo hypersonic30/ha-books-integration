@@ -18,6 +18,8 @@ from .const import (
     CONF_CHAPTARR_URL,
     CONF_KOMGA_API_KEY,
     CONF_KOMGA_URL,
+    DEFAULT_AUDIOBOOK_CATEGORY,
+    DEFAULT_EBOOK_CATEGORY,
     CONF_NZBGET_PASSWORD,
     CONF_NZBGET_URL,
     CONF_NZBGET_USERNAME,
@@ -127,6 +129,23 @@ class ChaptarrClient(_Client):
             {"X-Api-Key": cfg.get(CONF_CHAPTARR_API_KEY, "")},
             cfg.get(CONF_VERIFY_SSL, True),
         )
+
+    async def async_download_client_categories(self) -> dict[str, str]:
+        """The audiobook/ebook category Chaptarr's own, enabled usenet download client watches (Chaptarr ->
+        Settings -> Download Clients), so a fallback grab (chaptarr_fallback.py) lands exactly where Chaptarr's
+        completed-download handling already looks. Read live, not configured separately, so it can never drift
+        out of sync with Chaptarr's own setting - which is exactly what went wrong with the earlier fixed
+        "Chaptarr" default (a hidden, unused legacy field; the real fields are audiobookCategory/ebookCategory)."""
+        clients = await self.get("/downloadclient")
+        for client in clients or []:
+            if client.get("protocol") != "usenet" or not client.get("enable"):
+                continue
+            fields = {f.get("name"): f.get("value") for f in client.get("fields") or []}
+            return {
+                "audiobook": str(fields.get("audiobookCategory") or DEFAULT_AUDIOBOOK_CATEGORY),
+                "ebook": str(fields.get("ebookCategory") or DEFAULT_EBOOK_CATEGORY),
+            }
+        return {"audiobook": DEFAULT_AUDIOBOOK_CATEGORY, "ebook": DEFAULT_EBOOK_CATEGORY}
 
 
 class AbsClient(_Client):

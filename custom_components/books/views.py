@@ -409,7 +409,10 @@ async def _check_fallback_after_search(hass: HomeAssistant, client: ChaptarrClie
             book = await client.get(f"/book/{book_id}")
             if (book.get("statistics") or {}).get("bookFileCount"):
                 continue
-            await job.check_now(book_id, titles.get(book_id) or book.get("title") or "", author_name)
+            await job.check_now(
+                book_id, titles.get(book_id) or book.get("title") or "", author_name,
+                is_audiobook=bool(book.get("audiobookMonitored")),
+            )
     except (UpstreamError, aiohttp.ClientError, TimeoutError) as exc:
         _LOGGER.debug("books: could not check the fallback search after adding %s: %s", book_ids, exc)
     except Exception:  # noqa: BLE001 - a background task must never raise

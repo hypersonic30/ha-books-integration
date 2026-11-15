@@ -51,8 +51,9 @@ no entities; with one it adds a few status entities (below).
   metadata-derived search term (e.g. "ü" transliterated as "ue"), so Chaptarr's search finds nothing even though the release
   exists. When a wanted book stays unavailable for a day, the integration asks Prowlarr directly with umlauts spelled out and,
   on a strict match (no TV/movie-style naming, a plausible category, every significant title word present), hands the NZB to
-  NZBGet under the category Chaptarr's own download client already watches, so Chaptarr imports it exactly as if it had found
-  it itself. Needs Prowlarr and NZBGet credentials in the settings; see below.
+  NZBGet under whichever of Chaptarr's own audiobook/ebook categories fits the book, read live from Chaptarr itself (never
+  configured separately, so it can't drift out of sync), so Chaptarr imports it exactly as if it had found it itself. Needs
+  Prowlarr and NZBGet credentials in the settings; see below.
 - **Manga (optional)** — proxies for Komga (reading, progress) and Mylar3 (search, add, download) with strict allow-lists; see below.
 - **People (optional)** — every Home Assistant user can have their own Komga/Audiobookshelf account, notify target and tolino account.
 - **tolino (optional)** — send ebooks to the tolino Cloud, automatically if you like, and carry reading progress both ways; one Thalia
@@ -127,10 +128,12 @@ since it just had its search already. Everything else that stays "wanted" in Cha
 hourly sweep. Both ask Prowlarr directly with German umlauts spelled out (ä→ae, ö→oe, ü→ue, ß→ss) and, if a result passes a
 strict filter (usenet only, no `S01E02`-style episode naming, a
 plausible audio/book category, every significant word of the title present), downloads that release's NZB and hands it to
-NZBGet under the category Chaptarr's own download client uses (Chaptarr → Settings → Download Clients; must match, default
-`Chaptarr`) — Chaptarr's completed-download handling then imports it on its own, exactly as if it had found the release
-itself. Up to 3 books are tried per hour; a book that is never found gives up after 10 days and notifies once. If Prowlarr or
-NZBGet cannot be reached, a repair hint appears and clears again once a run succeeds.
+NZBGet under whichever of Chaptarr's own download-client categories fits the book - the audiobook category (Chaptarr →
+Settings → Download Clients → Audiobook Category) for audiobooks/Hörspiele, the ebook category for ebooks - read live from
+Chaptarr itself every time, never configured here, so it can't drift out of sync with Chaptarr's own setting. Chaptarr's
+completed-download handling then imports it on its own, exactly as if it had found the release itself. Up to 3 books are
+tried per hour; a book that is never found gives up after 10 days and notifies once. If Prowlarr, NZBGet or Chaptarr itself
+cannot be reached at the moment of a grab, a repair hint appears and clears again once a run succeeds.
 
 ### People (required)
 
@@ -221,7 +224,7 @@ Settings → Devices & Services → Add Integration → **Books**:
 | Mylar3 URL / API key | optional, for searching and downloading manga in the Manga Card: address of Mylar3 and its API key (Mylar → Settings → Web Interface → API, enable it first). Checked when you save |
 | Tolino bridge URL / token | optional: address of your tolino-bridge (e.g. `http://192.168.1.10:8199`) and its token (`deploy.sh token`). Leave empty to disable "send to Tolino" |
 | Prowlarr URL / API key | optional, only used by the fallback search below: address of Prowlarr and its API key (Prowlarr → Settings → General → API Key) |
-| NZBGet URL / username / password / category | optional, only used by the fallback search below: address of NZBGet and its login (NZBGet → Settings → Security); category must match the one Chaptarr's own download client uses (default `Chaptarr`) |
+| NZBGet URL / username / password | optional, only used by the fallback search below: address of NZBGet and its login. The integration only ever calls `append` and `version`, so NZBGet's restricted **Add-User** (Settings → Security → `AddUsername`/`AddPassword`) is enough - no need for the Control user. The category is not configured here - it's read live from Chaptarr's own download client |
 | Fallback search via Prowlarr | optional, off by default: see *Fallback search* above. Needs Prowlarr and NZBGet filled in |
 | Verify SSL | disable only for self-signed certificates |
 | Automatically repair blocked imports | see above (default on) |

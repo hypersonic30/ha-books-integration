@@ -5,7 +5,7 @@ from custom_components.books.const import DOMAIN
 from custom_components.books.views import build_book_payload, default_root_folders
 
 from .conftest import ABS, CHAPTARR, person
-from .test_chaptarr_fallback import JSON, NZBGET, PROWLARR, REAL_HITS, WANTED_TITLE, _entry_data
+from .test_chaptarr_fallback import JSON, NZBGET, PROWLARR, REAL_HITS, WANTED_TITLE, _downloadclient_world, _entry_data
 
 ROOTFOLDERS = [
     {"id": 1, "path": "/data/media/ebooks", "folderType": 2, "isEffectiveDefaultEbook": True,
@@ -161,7 +161,8 @@ async def test_add_book_falls_back_to_prowlarr_when_chaptarr_itself_found_nothin
     aioclient_mock.post(f"{CHAPTARR}/api/v1/command", json={"id": 9})
     aioclient_mock.get(f"{CHAPTARR}/api/v1/command/9", json={"id": 9, "status": "completed"})
     aioclient_mock.get(f"{CHAPTARR}/api/v1/queue", json={"records": []})
-    aioclient_mock.get(f"{CHAPTARR}/api/v1/book/1164", json={"id": 1164, "statistics": {"bookFileCount": 0}})
+    aioclient_mock.get(f"{CHAPTARR}/api/v1/book/1164",
+                       json={"id": 1164, "audiobookMonitored": True, "statistics": {"bookFileCount": 0}})
     _fallback_grab_mocks(aioclient_mock)
 
     resp = await client.post("/api/books/add", json={"book": SEARCH_BOOK, "media_types": ["audiobook"]})
@@ -170,12 +171,37 @@ async def test_add_book_falls_back_to_prowlarr_when_chaptarr_itself_found_nothin
 
     job = hass.data[DOMAIN]["chaptarr_fallback"]
     assert job.state["done"]["1164"]["nzb_id"] == 555
+    posts = [c for c in aioclient_mock.mock_calls if c[0] == "POST" and str(c[1]).startswith(NZBGET)]
+    assert posts[0][2]["params"][2] == "Audiobook"             # book's audiobookMonitored was wired through
+
+
+async def test_add_book_fallback_for_an_ebook_uses_chaptarrs_ebook_category(
+        hass, hass_admin_user, hass_client, aioclient_mock):
+    """Same path as the audiobook case above, but an ebook add - catches a regression to a hardcoded
+    is_audiobook that ignores what views.py actually read from Chaptarr's own book record."""
+    client = await _setup_with_fallback(hass, hass_admin_user, hass_client)
+    aioclient_mock.get(f"{CHAPTARR}/api/v1/rootfolder", json=ROOTFOLDERS)
+    aioclient_mock.post(f"{CHAPTARR}/api/v1/book", json={"id": 1164, "title": WANTED_TITLE})
+    aioclient_mock.post(f"{CHAPTARR}/api/v1/command", json={"id": 9})
+    aioclient_mock.get(f"{CHAPTARR}/api/v1/command/9", json={"id": 9, "status": "completed"})
+    aioclient_mock.get(f"{CHAPTARR}/api/v1/queue", json={"records": []})
+    aioclient_mock.get(f"{CHAPTARR}/api/v1/book/1164",
+                       json={"id": 1164, "ebookMonitored": True, "statistics": {"bookFileCount": 0}})
+    _fallback_grab_mocks(aioclient_mock)
+
+    resp = await client.post("/api/books/add", json={"book": SEARCH_BOOK, "media_types": ["ebook"]})
+    assert resp.status == 200
+    await hass.async_block_till_done()
+
+    posts = [c for c in aioclient_mock.mock_calls if c[0] == "POST" and str(c[1]).startswith(NZBGET)]
+    assert posts[0][2]["params"][2] == "Ebook"
 
 
 def _fallback_grab_mocks(aioclient_mock) -> None:
     """Everything a real grab needs. Used by the negative tests too (fully mocked, not just omitted) so that if
     the guard they test for is ever removed, the call actually goes through and gets recorded - not swallowed
     by an unrelated "no mock registered" error that would make the assertion pass for the wrong reason."""
+    _downloadclient_world(aioclient_mock)
     aioclient_mock.get(f"{PROWLARR}/api/v1/search", json=REAL_HITS, headers=JSON)
     aioclient_mock.get(f"{PROWLARR}/1/download", content=b"fake nzb bytes")
     aioclient_mock.post(f"{NZBGET}/jsonrpc", json={"version": "1.1", "result": 555}, headers=JSON)

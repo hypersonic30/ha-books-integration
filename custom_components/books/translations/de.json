@@ -24,7 +24,6 @@
           "nzbget_url": "NZBGet-URL (optional)",
           "nzbget_username": "NZBGet-Benutzername (optional)",
           "nzbget_password": "NZBGet-Passwort (optional)",
-          "nzbget_category": "NZBGet-Kategorie für die Ersatzsuche (optional)",
           "fallback_search": "Ersatzsuche über Prowlarr, wenn Chaptarr nichts findet"
         },
         "data_description": {
@@ -47,8 +46,7 @@
           "nzbget_url": "z. B. http://192.168.1.10:6789 - wird nur für die Ersatzsuche unten genutzt.",
           "nzbget_username": "NZBGet → Einstellungen → Sicherheit",
           "nzbget_password": "NZBGet → Einstellungen → Sicherheit",
-          "nzbget_category": "Muss zur Kategorie passen, die Chaptarrs eigener Download-Client nutzt (Chaptarr → Einstellungen → Download-Clients), sonst merkt Chaptarr die Datei nicht. Standard: Chaptarr",
-          "fallback_search": "Bleibt ein gesuchtes Buch einen Tag lang nicht gefunden, fragt die Integration Prowlarr direkt (mit ausgeschriebenen Umlauten, ü→ue usw.) und gibt einen eindeutigen Treffer an NZBGet unter der obigen Kategorie weiter. Braucht Prowlarr und NZBGet oben vollständig."
+          "fallback_search": "Bleibt ein gesuchtes Buch einen Tag lang nicht gefunden, fragt die Integration Prowlarr direkt (mit ausgeschriebenen Umlauten, ü→ue usw.) und gibt einen eindeutigen Treffer an NZBGet weiter – unter der Hörbuch- oder E-Book-Kategorie, die Chaptarr selbst dafür einträgt (wird bei Chaptarr ausgelesen, hier nicht einstellbar). Braucht Prowlarr und NZBGet oben vollständig."
         }
       },
       "reconfigure": {
@@ -73,7 +71,6 @@
           "nzbget_url": "NZBGet-URL (optional)",
           "nzbget_username": "NZBGet-Benutzername (optional)",
           "nzbget_password": "NZBGet-Passwort (optional)",
-          "nzbget_category": "NZBGet-Kategorie für die Ersatzsuche (optional)",
           "fallback_search": "Ersatzsuche über Prowlarr, wenn Chaptarr nichts findet"
         },
         "data_description": {
@@ -96,8 +93,7 @@
           "nzbget_url": "z. B. http://192.168.1.10:6789 - wird nur für die Ersatzsuche unten genutzt.",
           "nzbget_username": "NZBGet → Einstellungen → Sicherheit",
           "nzbget_password": "NZBGet → Einstellungen → Sicherheit",
-          "nzbget_category": "Muss zur Kategorie passen, die Chaptarrs eigener Download-Client nutzt (Chaptarr → Einstellungen → Download-Clients), sonst merkt Chaptarr die Datei nicht. Standard: Chaptarr",
-          "fallback_search": "Bleibt ein gesuchtes Buch einen Tag lang nicht gefunden, fragt die Integration Prowlarr direkt (mit ausgeschriebenen Umlauten, ü→ue usw.) und gibt einen eindeutigen Treffer an NZBGet unter der obigen Kategorie weiter. Braucht Prowlarr und NZBGet oben vollständig."
+          "fallback_search": "Bleibt ein gesuchtes Buch einen Tag lang nicht gefunden, fragt die Integration Prowlarr direkt (mit ausgeschriebenen Umlauten, ü→ue usw.) und gibt einen eindeutigen Treffer an NZBGet weiter – unter der Hörbuch- oder E-Book-Kategorie, die Chaptarr selbst dafür einträgt (wird bei Chaptarr ausgelesen, hier nicht einstellbar). Braucht Prowlarr und NZBGet oben vollständig."
         }
       }
     },
@@ -364,8 +360,8 @@
       "description": "{service} hat den Schlüssel bzw. das Token für „{person}“ abgelehnt (401). Die Cards zeigen dann Fehler statt Inhalt. Prüfe den Schlüssel unter Einstellungen → Geräte & Dienste → Books (bei der Person, bei „-“ in den Haupteinstellungen), z. B. nach einer Erneuerung. Der Hinweis verschwindet, sobald es wieder klappt."
     },
     "fallback_search_unreachable": {
-      "title": "Ersatzsuche erreicht Prowlarr oder NZBGet nicht",
-      "description": "Die zweite Suchstufe für Bücher, die Chaptarr selbst nicht findet, konnte beim letzten Lauf Prowlarr oder NZBGet nicht erreichen. URLs/Zugangsdaten unter Einstellungen → Geräte & Dienste → Books prüfen. Der Hinweis verschwindet, sobald ein Lauf wieder klappt."
+      "title": "Ersatzsuche erreicht Prowlarr, NZBGet oder Chaptarr nicht",
+      "description": "Die zweite Suchstufe für Bücher, die Chaptarr selbst nicht findet, konnte beim letzten Lauf Prowlarr oder NZBGet nicht erreichen oder Chaptarrs eigene Download-Client-Kategorien nicht lesen. URLs/Zugangsdaten unter Einstellungen → Geräte & Dienste → Books prüfen. Der Hinweis verschwindet, sobald ein Lauf wieder klappt."
     }
   }
 }

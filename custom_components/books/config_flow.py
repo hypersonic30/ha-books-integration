@@ -53,7 +53,6 @@ from .const import (
     CONF_MYLAR_API_KEY,
     CONF_MYLAR_URL,
     CONF_NOTIFY_SERVICE,
-    CONF_NZBGET_CATEGORY,
     CONF_NZBGET_PASSWORD,
     CONF_NZBGET_URL,
     CONF_NZBGET_USERNAME,
@@ -67,7 +66,6 @@ from .const import (
     CONF_VERIFY_SSL,
     DEFAULT_DEBUG_LOGGING,
     DEFAULT_FALLBACK_SEARCH,
-    DEFAULT_NZBGET_CATEGORY,
     DEFAULT_RESCUE_IMPORTS,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
@@ -103,10 +101,6 @@ def _schema(defaults: dict) -> vol.Schema:
         vol.Optional(
             CONF_NZBGET_PASSWORD, description={"suggested_value": defaults.get(CONF_NZBGET_PASSWORD, "")}
         ): _PASSWORD,
-        vol.Optional(
-            CONF_NZBGET_CATEGORY,
-            description={"suggested_value": defaults.get(CONF_NZBGET_CATEGORY, DEFAULT_NZBGET_CATEGORY)},
-        ): str,
         vol.Required(
             CONF_FALLBACK_SEARCH, default=defaults.get(CONF_FALLBACK_SEARCH, DEFAULT_FALLBACK_SEARCH)
         ): bool,
@@ -338,7 +332,6 @@ async def _validate(hass: HomeAssistant, data: dict) -> tuple[dict, dict[str, st
     data[CONF_NZBGET_URL] = (data.get(CONF_NZBGET_URL) or "").strip().rstrip("/")
     data[CONF_NZBGET_USERNAME] = (data.get(CONF_NZBGET_USERNAME) or "").strip()
     data[CONF_NZBGET_PASSWORD] = (data.get(CONF_NZBGET_PASSWORD) or "").strip()
-    data[CONF_NZBGET_CATEGORY] = (data.get(CONF_NZBGET_CATEGORY) or "").strip()
     if data[CONF_NZBGET_URL] and not data[CONF_NZBGET_URL].startswith(("http://", "https://")):
         errors[CONF_NZBGET_URL] = "invalid_url"
     elif data[CONF_NZBGET_URL] and not (data[CONF_NZBGET_USERNAME] and data[CONF_NZBGET_PASSWORD]):

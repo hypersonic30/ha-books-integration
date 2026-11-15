@@ -5,9 +5,10 @@ indexers spell a release differently (e.g. German "ü" transliterated as "ue" in
 finds nothing even though the release exists. Every FALLBACK_INTERVAL_SECONDS, books that have stayed "wanted"
 for a while are retried with the title transliterated (ä/ö/ü/ß -> ae/oe/ue/ss) against Prowlarr directly. A strict
 match (all significant title words present, no "S01E02"-style episode naming, a plausible Newznab category) is
-handed to NZBGet as a plain NZB under the category Chaptarr's own download client already watches
-(`CONF_NZBGET_CATEGORY`), so Chaptarr's completed-download handling imports it exactly as if it had found it itself
-- Chaptarr has no "push a release" API of its own.
+handed to NZBGet as a plain NZB under whichever of Chaptarr's own audiobook/ebook categories fits the book
+(read live from Chaptarr's download-client config, never configured separately - see
+ChaptarrClient.async_download_client_categories), so Chaptarr's completed-download handling imports it exactly
+as if it had found it itself - Chaptarr has no "push a release" API of its own.
 
 Off by default (`CONF_FALLBACK_SEARCH`); needs Prowlarr and NZBGet credentials in the main settings. Mirrors
 tolino_import.py's shape (Store-backed state, async_start/async_tick, bounded work per run) but is a single global
@@ -32,9 +33,7 @@ from homeassistant.util import dt as dt_util
 from .api import ChaptarrClient, NzbgetClient, ProwlarrClient, UpstreamError, get_config
 from .const import (
     CONF_FALLBACK_SEARCH,
-    CONF_NZBGET_CATEGORY,
     CONF_VERIFY_SSL,
-    DEFAULT_NZBGET_CATEGORY,
     DOMAIN,
     FALLBACK_MAX_ATTEMPTS,
     FALLBACK_MAX_PER_RUN,
@@ -158,10 +157,13 @@ class ChaptarrFallbackSearch:
                 _LOGGER.exception("books: Chaptarr fallback search failed")
                 return None
 
-    async def check_now(self, book_id: str, title: str, author_name: str = "") -> str:
+    async def check_now(self, book_id: str, title: str, author_name: str = "", *, is_audiobook: bool = True) -> str:
         """Try one specific book right away - e.g. right after Chaptarr's own search for it (just triggered by
         the card's "add") came back empty - instead of waiting for the next hourly sweep and its
         FALLBACK_MIN_AGE_SECONDS gate (Chaptarr already just had its fair, immediate chance).
+
+        `is_audiobook` picks which of Chaptarr's two download-client categories a grab goes under; the caller
+        (views.py) knows this from the very book record it already fetched to get here.
 
         Returns "disabled", "already_done", "given_up" (no point retrying), "grabbed", "no_match" or "error"."""
         book_id = str(book_id)
@@ -172,16 +174,19 @@ class ChaptarrFallbackSearch:
         if book_id in self.state["failed"]:
             return "given_up"
         cfg = get_config(self._hass)
+        chaptarr = ChaptarrClient(self._hass, cfg)
         prowlarr = ProwlarrClient(self._hass, cfg)
         nzbget = NzbgetClient(self._hass, cfg)
-        category = cfg.get(CONF_NZBGET_CATEGORY) or DEFAULT_NZBGET_CATEGORY
         verify_ssl = cfg.get(CONF_VERIFY_SSL, True)
         surname = author_name.rsplit(" ", 1)[-1] if author_name.strip() else ""
-        rec = {"localBookId": book_id, "title": title, "authorTitle": f"{surname}, {title}" if surname else ""}
+        rec = {
+            "localBookId": book_id, "title": title, "authorTitle": f"{surname}, {title}" if surname else "",
+            "audiobookMonitored": is_audiobook, "ebookMonitored": not is_audiobook,
+        }
         summary = {"grabbed": [], "given_up": []}
         try:
             async with self._running:              # never run alongside the hourly sweep: both touch self.state
-                ok = await self._attempt(prowlarr, nzbget, category, verify_ssl, rec, summary)
+                ok = await self._attempt(chaptarr, prowlarr, nzbget, verify_ssl, rec, summary)
                 await self._store.async_save(self.state)
         except Exception:  # noqa: BLE001 - triggered from the add flow's background task, must never raise there
             _LOGGER.exception("books: immediate fallback search for '%s' failed", title)
@@ -227,11 +232,14 @@ class ChaptarrFallbackSearch:
         return out[:FALLBACK_MAX_PER_RUN]
 
     async def _attempt(
-        self, prowlarr: ProwlarrClient, nzbget: NzbgetClient, category: str, verify_ssl: bool, rec: dict, summary: dict,
+        self, chaptarr: ChaptarrClient, prowlarr: ProwlarrClient, nzbget: NzbgetClient, verify_ssl: bool,
+        rec: dict, summary: dict,
     ) -> bool:
         """One candidate: search Prowlarr, match strictly, grab a good hit. Shared by the hourly sweep and
-        `check_now`. Returns False only when Prowlarr/NZBGet themselves could not be reached (the caller stops
-        and flags the repair issue); True otherwise, whether that found a release, a non-match, or a give-up."""
+        `check_now`. Returns False only when Prowlarr/NZBGet/Chaptarr itself could not be reached (the caller
+        stops and flags the repair issue); True otherwise, whether that found a release, a non-match, or a
+        give-up. Chaptarr's own category is read live, and only once a release actually matches - a miss should
+        not cost an extra Chaptarr call."""
         book_id = str(rec.get("localBookId") or rec.get("id"))
         title = str(rec.get("title") or "")
         words = significant_words(title)
@@ -248,6 +256,8 @@ class ChaptarrFallbackSearch:
             self._give_up_or_retry(book_id, title, summary)
             return True
         try:
+            categories = await chaptarr.async_download_client_categories()
+            category = categories["audiobook"] if rec.get("audiobookMonitored") else categories["ebook"]
             content = await _fetch_nzb_bytes(self._hass, release["downloadUrl"], verify_ssl)
             nzb_id = await nzbget.append(
                 filename=str(release.get("fileName") or f"{release.get('title', title)}.nzb"),
@@ -274,7 +284,6 @@ class ChaptarrFallbackSearch:
         chaptarr = ChaptarrClient(self._hass, cfg)
         prowlarr = ProwlarrClient(self._hass, cfg)
         nzbget = NzbgetClient(self._hass, cfg)
-        category = cfg.get(CONF_NZBGET_CATEGORY) or DEFAULT_NZBGET_CATEGORY
         verify_ssl = cfg.get(CONF_VERIFY_SSL, True)
         summary = {"grabbed": [], "given_up": []}
         try:
@@ -288,7 +297,7 @@ class ChaptarrFallbackSearch:
             return summary
         unreachable = False
         for rec in candidates:
-            if not await self._attempt(prowlarr, nzbget, category, verify_ssl, rec, summary):
+            if not await self._attempt(chaptarr, prowlarr, nzbget, verify_ssl, rec, summary):
                 unreachable = True
                 break
         if unreachable:

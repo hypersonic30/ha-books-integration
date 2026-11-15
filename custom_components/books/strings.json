@@ -24,7 +24,6 @@
           "nzbget_url": "NZBGet URL (optional)",
           "nzbget_username": "NZBGet username (optional)",
           "nzbget_password": "NZBGet password (optional)",
-          "nzbget_category": "NZBGet category for the fallback search (optional)",
           "fallback_search": "Fallback search via Prowlarr when Chaptarr finds nothing"
         },
         "data_description": {
@@ -47,8 +46,7 @@
           "nzbget_url": "e.g. http://192.168.1.10:6789 - only used for the fallback search below.",
           "nzbget_username": "NZBGet → Settings → Security",
           "nzbget_password": "NZBGet → Settings → Security",
-          "nzbget_category": "Must match the category Chaptarr's own download client uses (Chaptarr → Settings → Download Clients), so Chaptarr notices and imports the file. Default: Chaptarr",
-          "fallback_search": "When a wanted book stays unavailable for a day, ask Prowlarr directly with German umlauts spelled out (ü→ue etc.) and hand a strict match to NZBGet under the category above. Needs Prowlarr and NZBGet filled in above."
+          "fallback_search": "When a wanted book stays unavailable for a day, ask Prowlarr directly with German umlauts spelled out (ü→ue etc.) and hand a strict match to NZBGet, under whichever of Chaptarr's own audiobook/ebook categories fits the book (read from Chaptarr itself, not configured here). Needs Prowlarr and NZBGet filled in above."
         }
       },
       "reconfigure": {
@@ -73,7 +71,6 @@
           "nzbget_url": "NZBGet URL (optional)",
           "nzbget_username": "NZBGet username (optional)",
           "nzbget_password": "NZBGet password (optional)",
-          "nzbget_category": "NZBGet category for the fallback search (optional)",
           "fallback_search": "Fallback search via Prowlarr when Chaptarr finds nothing"
         },
         "data_description": {
@@ -96,8 +93,7 @@
           "nzbget_url": "e.g. http://192.168.1.10:6789 - only used for the fallback search below.",
           "nzbget_username": "NZBGet → Settings → Security",
           "nzbget_password": "NZBGet → Settings → Security",
-          "nzbget_category": "Must match the category Chaptarr's own download client uses (Chaptarr → Settings → Download Clients), so Chaptarr notices and imports the file. Default: Chaptarr",
-          "fallback_search": "When a wanted book stays unavailable for a day, ask Prowlarr directly with German umlauts spelled out (ü→ue etc.) and hand a strict match to NZBGet under the category above. Needs Prowlarr and NZBGet filled in above."
+          "fallback_search": "When a wanted book stays unavailable for a day, ask Prowlarr directly with German umlauts spelled out (ü→ue etc.) and hand a strict match to NZBGet, under whichever of Chaptarr's own audiobook/ebook categories fits the book (read from Chaptarr itself, not configured here). Needs Prowlarr and NZBGet filled in above."
         }
       }
     },
@@ -364,8 +360,8 @@
       "description": "{service} refused the key/token for \"{person}\" (401). The cards then show errors instead of content. Check the key under Settings > Devices & services > Books (at the person, or in the main settings if it says \"-\"), e.g. after it was renewed. This hint disappears as soon as it works again."
     },
     "fallback_search_unreachable": {
-      "title": "Fallback search cannot reach Prowlarr or NZBGet",
-      "description": "The second-stage search for books Chaptarr cannot find itself could not reach Prowlarr or NZBGet during its last run. Check the URLs/credentials under Settings > Devices & services > Books. This hint disappears as soon as a run succeeds again."
+      "title": "Fallback search cannot reach Prowlarr, NZBGet or Chaptarr",
+      "description": "The second-stage search for books Chaptarr cannot find itself could not reach Prowlarr or NZBGet, or could not read Chaptarr's own download-client categories, during its last run. Check the URLs/credentials under Settings > Devices & services > Books. This hint disappears as soon as a run succeeds again."
     }
   }
 }

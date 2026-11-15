@@ -21,7 +21,6 @@ from custom_components.books.chaptarr_fallback import (
 from custom_components.books.const import (
     CONF_FALLBACK_SEARCH,
     CONF_NOTIFY_SERVICE,
-    CONF_NZBGET_CATEGORY,
     CONF_NZBGET_PASSWORD,
     CONF_NZBGET_URL,
     CONF_NZBGET_USERNAME,
@@ -72,7 +71,7 @@ def _entry_data(**overrides):
         **ENTRY_DATA,
         CONF_PROWLARR_URL: PROWLARR, CONF_PROWLARR_API_KEY: "prowlarr-key",
         CONF_NZBGET_URL: NZBGET, CONF_NZBGET_USERNAME: "nzb-user", CONF_NZBGET_PASSWORD: "nzb-pw",
-        CONF_NZBGET_CATEGORY: "Chaptarr", CONF_FALLBACK_SEARCH: True,
+        CONF_FALLBACK_SEARCH: True,
         **overrides,
     }
 
@@ -87,6 +86,19 @@ async def _setup(hass, **overrides) -> ChaptarrFallbackSearch:
 
 def _missing_world(aioclient_mock, records=(WANTED_RECORD,)):
     aioclient_mock.get(f"{CHAPTARR}/api/v1/wanted/missing", json={"records": list(records)}, headers=JSON)
+
+
+def _downloadclient_world(aioclient_mock, audiobook="Audiobook", ebook="Ebook"):
+    """Mirrors the real Chaptarr setup (verified live 2026-11-14): an enabled usenet NZBGet client whose
+    audiobookCategory/ebookCategory fields are the ones Chaptarr's completed-download handling actually
+    watches - a hidden, unused "musicCategory" field (a Lidarr-codebase leftover) is deliberately NOT what we
+    read, so a test asserting the old fixed-default behavior would catch a regression back to it."""
+    aioclient_mock.get(f"{CHAPTARR}/api/v1/downloadclient", json=[
+        {"protocol": "usenet", "enable": True, "fields": [
+            {"name": "audiobookCategory", "value": audiobook}, {"name": "ebookCategory", "value": ebook},
+            {"name": "musicCategory", "value": "Chaptarr"},
+        ]},
+    ], headers=JSON)
 
 
 def _nzb_posts(aioclient_mock):
@@ -147,9 +159,10 @@ def test_give_up_after_max_attempts_and_not_before(hass):
 
 # -- full run, mocked Chaptarr/Prowlarr/NZBGet ---------------------------------------------------------------
 
-async def test_a_strict_match_is_handed_to_nzbget_under_chaptarrs_category(hass, aioclient_mock):
+async def test_a_strict_match_is_handed_to_nzbget_under_chaptarrs_audiobook_category(hass, aioclient_mock):
     job = await _setup(hass)
     _missing_world(aioclient_mock)
+    _downloadclient_world(aioclient_mock)
     aioclient_mock.get(f"{PROWLARR}/api/v1/search", json=REAL_HITS, headers=JSON)
     aioclient_mock.get(f"{PROWLARR}/1/download", content=b"fake nzb bytes")
     aioclient_mock.post(f"{NZBGET}/jsonrpc", json={"version": "1.1", "result": 555}, headers=JSON)
@@ -164,8 +177,26 @@ async def test_a_strict_match_is_handed_to_nzbget_under_chaptarrs_category(hass,
     assert len(params) == 11
     assert params[0] == "benjamin.mp3.nzb"                                 # the smallest of the 3 real matches
     assert base64.b64decode(params[1]) == b"fake nzb bytes"
-    assert params[2] == "Chaptarr"
+    # WANTED_RECORD is audiobookMonitored=True -> Chaptarr's "Audiobook" category, never the unused "Chaptarr"
+    # legacy field (a real bug this guards against: see _downloadclient_world's docstring).
+    assert params[2] == "Audiobook"
     assert params[6] == "books-fallback-1164"                              # DupeKey: a second line of defense
+
+
+async def test_an_ebook_type_book_is_handed_to_nzbget_under_chaptarrs_ebook_category(hass, aioclient_mock):
+    job = await _setup(hass)
+    ebook_record = {**WANTED_RECORD, "audiobookMonitored": False, "ebookMonitored": True}
+    _missing_world(aioclient_mock, records=[ebook_record])
+    _downloadclient_world(aioclient_mock)
+    aioclient_mock.get(f"{PROWLARR}/api/v1/search", json=REAL_HITS, headers=JSON)
+    aioclient_mock.get(f"{PROWLARR}/1/download", content=b"fake nzb bytes")
+    aioclient_mock.post(f"{NZBGET}/jsonrpc", json={"version": "1.1", "result": 555}, headers=JSON)
+
+    summary = await job.async_tick()
+
+    assert summary["grabbed"] == [WANTED_TITLE]
+    params = _nzb_posts(aioclient_mock)[0][2]["params"]
+    assert params[2] == "Ebook"
 
 
 def _calls_to(aioclient_mock, base_url: str) -> int:
@@ -175,6 +206,7 @@ def _calls_to(aioclient_mock, base_url: str) -> int:
 async def test_a_second_run_does_not_grab_the_same_book_again(hass, aioclient_mock):
     job = await _setup(hass)
     _missing_world(aioclient_mock)
+    _downloadclient_world(aioclient_mock)
     aioclient_mock.get(f"{PROWLARR}/api/v1/search", json=REAL_HITS, headers=JSON)
     aioclient_mock.get(f"{PROWLARR}/1/download", content=b"fake nzb bytes")
     aioclient_mock.post(f"{NZBGET}/jsonrpc", json={"version": "1.1", "result": 555}, headers=JSON)
@@ -196,6 +228,7 @@ async def test_each_successful_grab_is_saved_immediately_not_batched_at_the_end(
     second = {**WANTED_RECORD, "localBookId": "2000", "title": "Irgendein Anderes Buch",
               "authorTitle": "schmidt, hans Irgendein Anderes Buch"}
     _missing_world(aioclient_mock, records=[WANTED_RECORD, second])
+    _downloadclient_world(aioclient_mock)
 
     async def search(method, url, data):
         from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMockResponse
@@ -229,6 +262,8 @@ async def test_no_match_counts_as_a_try_and_notifies_only_once_exhausted(hass, a
     msgs = async_mock_service(hass, "notify", "mgr")
     _missing_world(aioclient_mock)
     aioclient_mock.get(f"{PROWLARR}/api/v1/search", json=[], headers=JSON)
+    # No downloadclient mock registered: a miss must never ask Chaptarr for its categories - a call would error
+    # the test. (Also guards against fetching categories before knowing whether there is a hit at all.)
 
     await job.async_tick()
 
@@ -240,6 +275,7 @@ async def test_the_notification_names_the_grabbed_book(hass, aioclient_mock):
     job = await _setup(hass, **{CONF_NOTIFY_SERVICE: "notify.mgr"})
     msgs = async_mock_service(hass, "notify", "mgr")
     _missing_world(aioclient_mock)
+    _downloadclient_world(aioclient_mock)
     aioclient_mock.get(f"{PROWLARR}/api/v1/search", json=REAL_HITS, headers=JSON)
     aioclient_mock.get(f"{PROWLARR}/1/download", content=b"fake nzb bytes")
     aioclient_mock.post(f"{NZBGET}/jsonrpc", json={"version": "1.1", "result": 555}, headers=JSON)
@@ -295,15 +331,46 @@ async def test_check_now_grabs_right_away_without_waiting_for_the_age_gate(hass,
     """The book was *just* added (added=now), which the hourly sweep's FALLBACK_MIN_AGE_SECONDS would skip -
     check_now must not care about that: Chaptarr's search just ran, so it already had its fair chance."""
     job = await _setup(hass)
+    _downloadclient_world(aioclient_mock)
     aioclient_mock.get(f"{PROWLARR}/api/v1/search", json=REAL_HITS, headers=JSON)
     aioclient_mock.get(f"{PROWLARR}/1/download", content=b"fake nzb bytes")
     aioclient_mock.post(f"{NZBGET}/jsonrpc", json={"version": "1.1", "result": 555}, headers=JSON)
 
-    result = await job.check_now("1164", WANTED_TITLE, "Elfie Donnelly")
+    result = await job.check_now("1164", WANTED_TITLE, "Elfie Donnelly")           # is_audiobook defaults True
 
     assert result == "grabbed"
     assert job.state["done"]["1164"]["nzb_id"] == 555
-    assert len(_nzb_posts(aioclient_mock)) == 1
+    posts = _nzb_posts(aioclient_mock)
+    assert len(posts) == 1
+    assert posts[0][2]["params"][2] == "Audiobook"
+
+
+async def test_check_now_for_an_ebook_picks_the_ebook_category(hass, aioclient_mock):
+    job = await _setup(hass)
+    _downloadclient_world(aioclient_mock)
+    aioclient_mock.get(f"{PROWLARR}/api/v1/search", json=REAL_HITS, headers=JSON)
+    aioclient_mock.get(f"{PROWLARR}/1/download", content=b"fake nzb bytes")
+    aioclient_mock.post(f"{NZBGET}/jsonrpc", json={"version": "1.1", "result": 555}, headers=JSON)
+
+    result = await job.check_now("1164", WANTED_TITLE, "Elfie Donnelly", is_audiobook=False)
+
+    assert result == "grabbed"
+    assert _nzb_posts(aioclient_mock)[0][2]["params"][2] == "Ebook"
+
+
+async def test_a_hit_whose_chaptarr_category_lookup_fails_flags_the_repair_issue(hass, aioclient_mock):
+    """Mutation guard: if the categories lookup were not wrapped in the same try/except as the NZBGet append,
+    an unreachable Chaptarr at grab time would raise instead of being treated like an unreachable Prowlarr/NZBGet
+    (repair issue, no crash)."""
+    job = await _setup(hass)
+    aioclient_mock.get(f"{CHAPTARR}/api/v1/downloadclient", exc=aiohttp.ClientConnectionError("down"))
+    aioclient_mock.get(f"{PROWLARR}/api/v1/search", json=REAL_HITS, headers=JSON)
+
+    result = await job.check_now("1164", WANTED_TITLE)
+
+    assert result == "error"
+    assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_UNREACHABLE) is not None
+    assert not _nzb_posts(aioclient_mock)                                   # never reached NZBGet
 
 
 async def test_check_now_counts_a_miss_as_a_try_so_the_hourly_sweep_waits_before_retrying(hass, aioclient_mock):

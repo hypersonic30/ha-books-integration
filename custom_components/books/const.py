@@ -44,7 +44,6 @@ CONF_PROWLARR_API_KEY = "prowlarr_api_key"
 CONF_NZBGET_URL = "nzbget_url"
 CONF_NZBGET_USERNAME = "nzbget_username"
 CONF_NZBGET_PASSWORD = "nzbget_password"
-CONF_NZBGET_CATEGORY = "nzbget_category"
 CONF_FALLBACK_SEARCH = "fallback_search"
 
 DEFAULT_VERIFY_SSL = True
@@ -53,7 +52,12 @@ DEFAULT_DEBUG_LOGGING = False
 DEFAULT_AUTO_SEND = False
 DEFAULT_SYNC_PROGRESS = False
 DEFAULT_SYNC_PROGRESS_WRITE = False
-DEFAULT_NZBGET_CATEGORY = "Chaptarr"
+# Fallbacks only, used when Chaptarr's own download-client config has no value for the field (Chaptarr's own
+# UI defaults) - the categories actually used are read live from Chaptarr itself (see
+# ChaptarrClient.async_download_client_categories), never configured separately, so they can never drift out
+# of sync with what Chaptarr's completed-download handling actually watches.
+DEFAULT_AUDIOBOOK_CATEGORY = "Audiobook"
+DEFAULT_EBOOK_CATEGORY = "Ebook"
 DEFAULT_FALLBACK_SEARCH = False
 
 REQUEST_TIMEOUT = 10
